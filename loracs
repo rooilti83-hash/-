@@ -1,134 +1,442 @@
--- Основная проверка загрузки игры
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
-
 -- Защита от повторного запуска
-if _G.BrainrotExecuted then
-    warn("Скрипт уже запущен!")
-    return
+if _G.BrainrotGUI then
+    _G.BrainrotGUI:Destroy()
 end
-_G.BrainrotExecuted = true
 
 -- Сервисы
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
 
+-- Переменные
+local settings = {
+    autoFarm = false,
+    autoSteal = false,
+    instantSteal = false,
+    autoLock = false,
+    speedBoost = false,
+    flyMode = false,
+    noClip = false,
+    esp = false,
+    antiBan = false,
+    walkSpeed = 50,
+    originalSpeed = humanoid.WalkSpeed
+}
+
 -- Создание GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BrainrotGUI"
 ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = player:WaitForChild("PlayerGui")
+_G.BrainrotGUI = ScreenGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 300, 0, 400)
-MainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 340, 0, 480)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -240)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
 MainFrame.Parent = ScreenGui
 
 local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.CornerRadius = UDim.new(0, 12)
 UICorner.Parent = MainFrame
 
 -- Заголовок
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 50)
-Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -50, 0, 50)
+Title.Position = UDim2.new(0, 0, 0, 0)
+Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 Title.Text = "🧠 Brainrot Script"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
+Title.TextSize = 20
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.CornerRadius = UDim.new(0, 12)
 TitleCorner.Parent = Title
 
--- Функция создания кнопки
-local function CreateButton(text, position, callback)
+-- Кнопка закрытия
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 40, 0, 40)
+CloseButton.Position = UDim2.new(1, -45, 0, 5)
+CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseButton.Text = "✕"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 20
+CloseButton.Parent = MainFrame
+
+local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(0, 8)
+CloseCorner.Parent = CloseButton
+
+CloseButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+    _G.BrainrotGUI = nil
+end)
+
+-- Контейнер для кнопок
+local ButtonContainer = Instance.new("ScrollingFrame")
+ButtonContainer.Size = UDim2.new(1, -20, 1, -70)
+ButtonContainer.Position = UDim2.new(0, 10, 0, 60)
+ButtonContainer.BackgroundTransparency = 1
+ButtonContainer.BorderSizePixel = 0
+ButtonContainer.ScrollBarThickness = 6
+ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 700)
+ButtonContainer.Parent = MainFrame
+
+-- Функция создания кнопки-переключателя
+local function CreateToggleButton(name, yPos, callback)
     local button = Instance.new("TextButton")
-    button.Size = UDim2.new(0, 250, 0, 40)
-    button.Position = position
-    button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    button.Text = text
-    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Name = name
+    button.Size = UDim2.new(1, -10, 0, 45)
+    button.Position = UDim2.new(0, 5, 0, yPos)
+    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.Text = name .. ": OFF"
+    button.TextColor3 = Color3.fromRGB(200, 200, 200)
     button.Font = Enum.Font.Gotham
-    button.TextSize = 14
-    button.Parent = MainFrame
+    button.TextSize = 15
+    button.Parent = ButtonContainer
     
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 8)
-    buttonCorner.Parent = button
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
     
-    button.MouseButton1Click:Connect(callback)
+    local enabled = false
+    button.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        button.Text = name .. (enabled and ": ON" or ": OFF")
+        button.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(50, 50, 50)
+        button.TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        callback(enabled)
+    end)
     
     return button
 end
 
--- Переменные для функций
-local autoFarm = false
-local speedBoost = false
-local originalSpeed = humanoid.WalkSpeed
+-- Кнопки с функциями
+CreateToggleButton("Auto Farm", 10, function(enabled)
+    settings.autoFarm = enabled
+end)
 
--- Кнопка Auto Farm
-CreateButton("Auto Farm: OFF", UDim2.new(0, 25, 0, 70), function()
-    autoFarm = not autoFarm
-    local btn = MainFrame:FindFirstChild("Auto Farm: OFF") or MainFrame:FindFirstChild("Auto Farm: ON")
-    if btn then
-        btn.Text = autoFarm and "Auto Farm: ON" or "Auto Farm: OFF"
-        btn.BackgroundColor3 = autoFarm and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+CreateToggleButton("Auto Steal", 65, function(enabled)
+    settings.autoSteal = enabled
+end)
+
+CreateToggleButton("Instant Steal", 120, function(enabled)
+    settings.instantSteal = enabled
+end)
+
+CreateToggleButton("Auto Lock Base", 175, function(enabled)
+    settings.autoLock = enabled
+end)
+
+CreateToggleButton("Speed Boost (2x)", 230, function(enabled)
+    settings.speedBoost = enabled
+    if enabled then
+        humanoid.WalkSpeed = settings.walkSpeed
+    else
+        humanoid.WalkSpeed = settings.originalSpeed
     end
 end)
 
--- Кнопка Speed Boost
-CreateButton("Speed Boost: OFF", UDim2.new(0, 25, 0, 120), function()
-    speedBoost = not speedBoost
-    local btn = MainFrame:FindFirstChild("Speed Boost: OFF") or MainFrame:FindFirstChild("Speed Boost: ON")
-    if btn then
-        btn.Text = speedBoost and "Speed Boost: ON" or "Speed Boost: OFF"
-        btn.BackgroundColor3 = speedBoost and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
-        humanoid.WalkSpeed = speedBoost and originalSpeed * 2 or originalSpeed
+CreateToggleButton("Fly Mode", 285, function(enabled)
+    settings.flyMode = enabled
+end)
+
+CreateToggleButton("No Clip", 340, function(enabled)
+    settings.noClip = enabled
+end)
+
+CreateToggleButton("ESP (Players)", 395, function(enabled)
+    settings.esp = enabled
+end)
+
+CreateToggleButton("Anti Kick", 450, function(enabled)
+    settings.antiBan = enabled
+end)
+
+-- Кнопка телепорта к магазину
+local shopButton = Instance.new("TextButton")
+shopButton.Size = UDim2.new(1, -10, 0, 45)
+shopButton.Position = UDim2.new(0, 5, 0, 505)
+shopButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
+shopButton.Text = "🛒 TP to Shop"
+shopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+shopButton.Font = Enum.Font.GothamBold
+shopButton.TextSize = 15
+shopButton.Parent = ButtonContainer
+
+local shopCorner = Instance.new("UICorner")
+shopCorner.CornerRadius = UDim.new(0, 8)
+shopCorner.Parent = shopButton
+
+shopButton.MouseButton1Click:Connect(function()
+    local shop = workspace:FindFirstChild("Shop") or workspace:FindFirstChild("Store")
+    if shop then
+        hrp.CFrame = shop:GetModelCFrame() + Vector3.new(0, 5, 0)
     end
 end)
 
--- Кнопка Teleport to Red Carpet
-CreateButton("TP to Red Carpet", UDim2.new(0, 25, 0, 170), function()
-    local carpet = workspace:FindFirstChild("RedCarpet") or workspace:FindFirstChild("Carpet")
-    if carpet then
-        hrp.CFrame = carpet.CFrame + Vector3.new(0, 5, 0)
-    end
-end)
+-- Кнопка телепорта к базе
+local baseButton = Instance.new("TextButton")
+baseButton.Size = UDim2.new(1, -10, 0, 45)
+baseButton.Position = UDim2.new(0, 5, 0, 560)
+baseButton.BackgroundColor3 = Color3.fromRGB(180, 130, 70)
+baseButton.Text = "🏠 TP to My Base"
+baseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+baseButton.Font = Enum.Font.GothamBold
+baseButton.TextSize = 15
+baseButton.Parent = ButtonContainer
 
--- Кнопка сбора всех брейнротов
-CreateButton("Collect All Brainrots", UDim2.new(0, 25, 0, 220), function()
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v:FindFirstChild("Brainrot") then
-            hrp.CFrame = v.PrimaryPart.CFrame
-            wait(0.5)
+local baseCorner = Instance.new("UICorner")
+baseCorner.CornerRadius = UDim.new(0, 8)
+baseCorner.Parent = baseButton
+
+baseButton.MouseButton1Click:Connect(function()
+    local bases = workspace:FindFirstChild("Bases")
+    if bases then
+        local playerBase = bases:FindFirstChild(player.Name)
+        if playerBase then
+            hrp.CFrame = playerBase:GetModelCFrame() + Vector3.new(0, 10, 0)
         end
     end
 end)
 
--- Основной цикл Auto Farm
-RunService.Heartbeat:Connect(function()
-    if autoFarm then
-        -- Логика автофарма
-        for _, item in pairs(workspace:GetDescendants()) do
-            if item.Name == "Brainrot" or item.Name == "Meme" then
-                if item:IsA("BasePart") and (hrp.Position - item.Position).Magnitude < 50 then
-                    hrp.CFrame = item.CFrame
-                    wait(0.3)
+-- ESP система [web:14][web:16]
+local function CreateESP()
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local char = otherPlayer.Character
+            if not char:FindFirstChild("ESP_Highlight") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_Highlight"
+                highlight.Adornee = char
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
+                highlight.OutlineTransparency = 0
+                highlight.Parent = char
+            end
+        end
+    end
+end
+
+local function RemoveESP()
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer.Character then
+            local esp = otherPlayer.Character:FindFirstChild("ESP_Highlight")
+            if esp then esp:Destroy() end
+        end
+    end
+end
+
+-- Auto Farm система [web:15][web:18]
+local function AutoFarm()
+    if not settings.autoFarm then return end
+    
+    for _, item in pairs(workspace:GetDescendants()) do
+        if item:IsA("Model") and (item.Name:lower():find("brainrot") or item.Name:lower():find("brain")) then
+            if item.PrimaryPart and (hrp.Position - item.PrimaryPart.Position).Magnitude < 100 then
+                pcall(function()
+                    hrp.CFrame = item.PrimaryPart.CFrame
+                    wait(0.2)
+                    fireproximityprompt(item:FindFirstChildWhichIsA("ProximityPrompt", true))
+                end)
+            end
+        end
+    end
+end
+
+-- Auto Steal система [web:14][web:15]
+local function AutoSteal()
+    if not settings.autoSteal then return end
+    
+    local bases = workspace:FindFirstChild("Bases")
+    if not bases then return end
+    
+    for _, base in pairs(bases:GetChildren()) do
+        if base.Name ~= player.Name then
+            for _, brainrot in pairs(base:GetDescendants()) do
+                if brainrot:IsA("Model") and brainrot.Name:lower():find("brainrot") then
+                    pcall(function()
+                        if settings.instantSteal then
+                            -- Мгновенное воровство [web:13][web:18]
+                            brainrot.Parent = player.Backpack or player.Character
+                        else
+                            hrp.CFrame = brainrot:GetModelCFrame()
+                            wait(0.3)
+                        end
+                    end)
                 end
             end
         end
     end
+end
+
+-- Auto Lock Base [web:18]
+local function AutoLockBase()
+    if not settings.autoLock then return end
+    
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        local lockButton = playerGui:FindFirstChild("LockBase", true)
+        if lockButton and lockButton:IsA("GuiButton") then
+            pcall(function()
+                firesignal(lockButton.MouseButton1Click)
+            end)
+        end
+    end
+end
+
+-- Fly Mode [web:14][web:16]
+local flying = false
+local flySpeed = 50
+local bodyVelocity, bodyGyro
+
+local function StartFly()
+    flying = true
+    
+    bodyVelocity = Instance.new("BodyVelocity")
+    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+    bodyVelocity.MaxForce = Vector3.new(9e4, 9e4, 9e4)
+    bodyVelocity.Parent = hrp
+    
+    bodyGyro = Instance.new("BodyGyro")
+    bodyGyro.MaxTorque = Vector3.new(9e4, 9e4, 9e4)
+    bodyGyro.P = 9e4
+    bodyGyro.Parent = hrp
+    
+    spawn(function()
+        while flying and settings.flyMode do
+            local camera = workspace.CurrentCamera
+            local moveDirection = Vector3.new(0, 0, 0)
+            
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                moveDirection = moveDirection + (camera.CFrame.LookVector * flySpeed)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                moveDirection = moveDirection - (camera.CFrame.LookVector * flySpeed)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                moveDirection = moveDirection - (camera.CFrame.RightVector * flySpeed)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                moveDirection = moveDirection + (camera.CFrame.RightVector * flySpeed)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                moveDirection = moveDirection + Vector3.new(0, flySpeed, 0)
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+                moveDirection = moveDirection - Vector3.new(0, flySpeed, 0)
+            end
+            
+            bodyVelocity.Velocity = moveDirection
+            bodyGyro.CFrame = camera.CFrame
+            
+            RunService.Heartbeat:Wait()
+        end
+    end)
+end
+
+local function StopFly()
+    flying = false
+    if bodyVelocity then bodyVelocity:Destroy() end
+    if bodyGyro then bodyGyro:Destroy() end
+end
+
+-- No Clip [web:14][web:16]
+local function NoClip()
+    if settings.noClip then
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
+    else
+        for _, part in pairs(character:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                part.CanCollide = true
+            end
+        end
+    end
+end
+
+-- Anti Kick [web:14][web:16]
+if settings.antiBan then
+    local mt = getrawmetatable(game)
+    local oldNamecall = mt.__namecall
+    
+    setreadonly(mt, false)
+    mt.__namecall = newcclosure(function(self, ...)
+        local method = getnamecallmethod()
+        if method == "Kick" or method == "kick" then
+            return
+        end
+        return oldNamecall(self, ...)
+    end)
+    setreadonly(mt, true)
+end
+
+-- Основной цикл
+RunService.Heartbeat:Connect(function()
+    pcall(function()
+        -- ESP
+        if settings.esp then
+            CreateESP()
+        else
+            RemoveESP()
+        end
+        
+        -- Auto Farm
+        if settings.autoFarm then
+            AutoFarm()
+        end
+        
+        -- Auto Steal
+        if settings.autoSteal then
+            AutoSteal()
+        end
+        
+        -- Auto Lock
+        if settings.autoLock then
+            AutoLockBase()
+        end
+        
+        -- Fly Mode
+        if settings.flyMode and not flying then
+            StartFly()
+        elseif not settings.flyMode and flying then
+            StopFly()
+        end
+        
+        -- No Clip
+        NoClip()
+    end)
 end)
 
-print("✅ Brainrot Script загружен успешно!")
+-- Обработка изменения персонажа
+player.CharacterAdded:Connect(function(char)
+    character = char
+    humanoid = char:WaitForChild("Humanoid")
+    hrp = char:WaitForChild("HumanoidRootPart")
+    wait(0.5)
+    if settings.speedBoost then
+        humanoid.WalkSpeed = settings.walkSpeed
+    end
+end)
+
+print("✅ Brainrot Script v2.0 загружен успешно!")
