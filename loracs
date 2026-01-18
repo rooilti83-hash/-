@@ -1,12 +1,10 @@
 -- ============================================
--- BRAINROT SCRIPT V5.0 - СТАБИЛЬНАЯ ВЕРСИЯ
+-- BRAINROT SCRIPT V6.0 - DEEP SCAN + GRAB TP
 -- ============================================
 
-print("🔄 Загрузка скрипта...")
+print("🔄 Загрузка скрипта v6.0...")
 
--- Защита от повторного запуска
 if _G.BrainrotActive then
-    warn("⚠️ Скрипт уже запущен!")
     if _G.BrainrotGUI then
         _G.BrainrotGUI:Destroy()
     end
@@ -14,43 +12,18 @@ end
 
 _G.BrainrotActive = true
 
--- Проверка загрузки игры
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
 wait(1)
 
--- Получение сервисов
-local success, Services = pcall(function()
-    return {
-        Players = game:GetService("Players"),
-        RunService = game:GetService("RunService"),
-        UserInputService = game:GetService("UserInputService"),
-        TweenService = game:GetService("TweenService")
-    }
-end)
+-- Сервисы
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
-if not success then
-    warn("❌ Ошибка загрузки сервисов!")
-    return
-end
-
-local Players = Services.Players
-local RunService = Services.RunService
-local UserInputService = Services.UserInputService
-local TweenService = Services.TweenService
-
--- Получение игрока
 local player = Players.LocalPlayer
-if not player then
-    warn("❌ LocalPlayer не найден!")
-    return
-end
-
-print("✅ LocalPlayer: " .. player.Name)
-
--- Ожидание персонажа
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid", 5)
 local hrp = character:WaitForChild("HumanoidRootPart", 5)
@@ -60,26 +33,22 @@ if not humanoid or not hrp then
     return
 end
 
-print("✅ Персонаж загружен")
-
 -- ============================================
 -- НАСТРОЙКИ
 -- ============================================
 
 local Config = {
-    autoFarm = false,
     autoSteal = false,
     speedBoost = false,
     flyMode = false,
     noClip = false,
     esp = false,
-    autoLock = false,
+    autoGrabTP = false,
     
     walkSpeed = 50,
     flySpeed = 50,
-    
-    stealDistance = 100,
-    stealDelay = 1
+    stealDelay = 1,
+    grabDistance = 15
 }
 
 local Stats = {
@@ -88,29 +57,26 @@ local Stats = {
     found = 0
 }
 
--- ============================================
--- СОЗДАНИЕ GUI
--- ============================================
+local foundItems = {}
+local grabbedItem = nil
 
-print("🎨 Создание GUI...")
+-- ============================================
+-- GUI
+-- ============================================
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BrainrotGUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.DisplayOrder = 999
-
 pcall(function()
     ScreenGui.Parent = player:WaitForChild("PlayerGui")
 end)
-
 _G.BrainrotGUI = ScreenGui
 
--- Главный фрейм
 local Main = Instance.new("Frame")
-Main.Name = "MainFrame"
-Main.Size = UDim2.new(0, 350, 0, 500)
-Main.Position = UDim2.new(0.5, -175, 0.5, -250)
-Main.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+Main.Size = UDim2.new(0, 360, 0, 550)
+Main.Position = UDim2.new(0.5, -180, 0.5, -275)
+Main.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 Main.BorderSizePixel = 0
 Main.Active = true
 Main.Draggable = true
@@ -123,11 +89,11 @@ Corner.Parent = Main
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -50, 0, 40)
-Title.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
-Title.Text = "🧠 Brainrot Script v5"
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+Title.Text = "🧠 Brainrot v6 - Deep Scan"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
+Title.TextSize = 16
 Title.Parent = Main
 
 local TitleCorner = Instance.new("UICorner")
@@ -142,7 +108,7 @@ CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
 CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 20
+CloseBtn.TextSize = 18
 CloseBtn.Parent = Main
 
 local CloseCorner = Instance.new("UICorner")
@@ -152,18 +118,17 @@ CloseCorner.Parent = CloseBtn
 CloseBtn.MouseButton1Click:Connect(function()
     _G.BrainrotActive = false
     ScreenGui:Destroy()
-    print("❌ Скрипт остановлен")
 end)
 
 -- Статистика
 local StatsLabel = Instance.new("TextLabel")
-StatsLabel.Size = UDim2.new(1, -20, 0, 50)
+StatsLabel.Size = UDim2.new(1, -20, 0, 45)
 StatsLabel.Position = UDim2.new(0, 10, 0, 50)
-StatsLabel.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+StatsLabel.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
 StatsLabel.Text = "📊 Попыток: 0 | ✅ Успешно: 0"
 StatsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 StatsLabel.Font = Enum.Font.Gotham
-StatsLabel.TextSize = 14
+StatsLabel.TextSize = 13
 StatsLabel.Parent = Main
 
 local StatsCorner = Instance.new("UICorner")
@@ -172,9 +137,9 @@ StatsCorner.Parent = StatsLabel
 
 -- Лог
 local LogFrame = Instance.new("ScrollingFrame")
-LogFrame.Size = UDim2.new(1, -20, 0, 150)
-LogFrame.Position = UDim2.new(0, 10, 0, 110)
-LogFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+LogFrame.Size = UDim2.new(1, -20, 0, 160)
+LogFrame.Position = UDim2.new(0, 10, 0, 105)
+LogFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 LogFrame.BorderSizePixel = 0
 LogFrame.ScrollBarThickness = 4
 LogFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -191,21 +156,21 @@ LogText.BackgroundTransparency = 1
 LogText.Text = ""
 LogText.TextColor3 = Color3.fromRGB(150, 255, 150)
 LogText.Font = Enum.Font.Code
-LogText.TextSize = 11
+LogText.TextSize = 10
 LogText.TextXAlignment = Enum.TextXAlignment.Left
 LogText.TextYAlignment = Enum.TextYAlignment.Top
 LogText.TextWrapped = true
 LogText.Parent = LogFrame
 
--- Функция логирования
+-- Логирование
 local logLines = {}
-local function Log(msg)
+local function Log(msg, color)
     local time = os.date("%H:%M:%S")
     local line = string.format("[%s] %s", time, msg)
     print(line)
     
     table.insert(logLines, 1, line)
-    if #logLines > 15 then
+    if #logLines > 20 then
         table.remove(logLines)
     end
     
@@ -215,26 +180,25 @@ end
 
 -- Контейнер кнопок
 local ButtonScroll = Instance.new("ScrollingFrame")
-ButtonScroll.Size = UDim2.new(1, -20, 0, 220)
-ButtonScroll.Position = UDim2.new(0, 10, 0, 270)
+ButtonScroll.Size = UDim2.new(1, -20, 0, 260)
+ButtonScroll.Position = UDim2.new(0, 10, 0, 275)
 ButtonScroll.BackgroundTransparency = 1
 ButtonScroll.BorderSizePixel = 0
 ButtonScroll.ScrollBarThickness = 4
 ButtonScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ButtonScroll.Parent = Main
 
--- Функция создания кнопки
 local buttonY = 5
+
 local function CreateButton(name, callback)
     local btn = Instance.new("TextButton")
-    btn.Name = name
-    btn.Size = UDim2.new(1, -10, 0, 40)
+    btn.Size = UDim2.new(1, -10, 0, 38)
     btn.Position = UDim2.new(0, 5, 0, buttonY)
     btn.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
     btn.Text = name .. ": OFF"
     btn.TextColor3 = Color3.fromRGB(200, 200, 200)
     btn.Font = Enum.Font.Gotham
-    btn.TextSize = 13
+    btn.TextSize = 12
     btn.Parent = ButtonScroll
     
     local corner = Instance.new("UICorner")
@@ -253,38 +217,112 @@ local function CreateButton(name, callback)
         end)
     end)
     
-    buttonY = buttonY + 45
+    buttonY = buttonY + 43
     ButtonScroll.CanvasSize = UDim2.new(0, 0, 0, buttonY + 5)
-    
     return btn
 end
 
-Log("✅ GUI создан успешно")
+local function CreateActionButton(name, color, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -10, 0, 38)
+    btn.Position = UDim2.new(0, 5, 0, buttonY)
+    btn.BackgroundColor3 = color
+    btn.Text = name
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.Parent = ButtonScroll
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = btn
+    
+    btn.MouseButton1Click:Connect(function()
+        pcall(callback)
+    end)
+    
+    buttonY = buttonY + 43
+    ButtonScroll.CanvasSize = UDim2.new(0, 0, 0, buttonY + 5)
+    return btn
+end
+
+Log("✅ GUI создан")
+
+-- ============================================
+-- ГЛУБОКОЕ СКАНИРОВАНИЕ WORKSPACE
+-- ============================================
+
+local function DeepScanWorkspace()
+    Log("🔍 ГЛУБОКОЕ СКАНИРОВАНИЕ WORKSPACE...")
+    
+    -- Показываем все папки верхнего уровня
+    Log("📁 Папки в workspace:")
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("Folder") or obj:IsA("Model") then
+            Log("  └─ " .. obj.Name .. " (" .. obj.ClassName .. ")")
+        end
+    end
+    
+    -- Ищем Bases во всех возможных местах [web:4][web:29]
+    local possibleBasesLocations = {
+        workspace:FindFirstChild("Bases"),
+        workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Bases"),
+        workspace:FindFirstChild("Game") and workspace.Game:FindFirstChild("Bases"),
+        workspace:FindFirstChild("PlayerBases"),
+        workspace:FindFirstChild("Houses")
+    }
+    
+    local basesFolder = nil
+    for _, location in pairs(possibleBasesLocations) do
+        if location then
+            basesFolder = location
+            Log("✅ Найдена папка баз: " .. location:GetFullName())
+            break
+        end
+    end
+    
+    if not basesFolder then
+        Log("❌ Папка с базами не найдена")
+        Log("🔍 Ищу базы по всему workspace...")
+        
+        -- Поиск по всему workspace
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj.Name:lower():find("base") and (obj:IsA("Folder") or obj:IsA("Model")) then
+                Log("  └─ Возможная база: " .. obj:GetFullName())
+            end
+        end
+    else
+        -- Показываем все базы
+        Log("📦 Базы игроков:")
+        for _, base in pairs(basesFolder:GetChildren()) do
+            Log("  └─ База: " .. base.Name)
+        end
+    end
+    
+    return basesFolder
+end
 
 -- ============================================
 -- ПОИСК БРЕЙНРОТОВ
 -- ============================================
 
-local foundItems = {}
-
-local function FindBrainrots()
+local function FindAllBrainrots()
     foundItems = {}
     Stats.found = 0
     
-    pcall(function()
-        local bases = workspace:FindFirstChild("Bases")
-        if not bases then
-            Log("❌ Папка Bases не найдена")
-            return
-        end
-        
-        Log("🔍 Сканирование баз...")
-        
-        for _, base in pairs(bases:GetChildren()) do
+    Log("🎯 ПОИСК БРЕЙНРОТОВ...")
+    
+    -- Метод 1: Через Bases
+    local basesFolder = DeepScanWorkspace()
+    
+    if basesFolder then
+        for _, base in pairs(basesFolder:GetChildren()) do
             if base.Name ~= player.Name and base:IsA("Model") then
+                Log("🔍 Сканирую базу: " .. base.Name)
+                
                 for _, item in pairs(base:GetDescendants()) do
+                    -- Ищем модели с ProximityPrompt или ClickDetector
                     if item:IsA("Model") and item.PrimaryPart then
-                        -- Проверяем есть ли ProximityPrompt
                         local hasPrompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
                         local hasClick = item:FindFirstChildWhichIsA("ClickDetector", true)
                         
@@ -297,14 +335,169 @@ local function FindBrainrots()
                                 click = hasClick
                             })
                             Stats.found = Stats.found + 1
+                            Log("  ✅ Найден: " .. item.Name)
                         end
                     end
                 end
             end
         end
+    end
+    
+    -- Метод 2: Поиск по всему workspace [web:31]
+    Log("🔍 Дополнительный поиск по workspace...")
+    for _, item in pairs(workspace:GetDescendants()) do
+        if item:IsA("Model") and item.PrimaryPart then
+            local name = item.Name:lower()
+            -- Проверяем по названиям брейнротов [web:29]
+            if name:find("brain") or name:find("cheese") or name:find("pizzanini") 
+                or name:find("talpa") or name:find("tralala") or name:find("noobini") then
+                
+                local hasPrompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
+                local hasClick = item:FindFirstChildWhichIsA("ClickDetector", true)
+                
+                if hasPrompt or hasClick then
+                    -- Проверяем что еще не добавили
+                    local alreadyAdded = false
+                    for _, existing in pairs(foundItems) do
+                        if existing.model == item then
+                            alreadyAdded = true
+                            break
+                        end
+                    end
+                    
+                    if not alreadyAdded then
+                        table.insert(foundItems, {
+                            model = item,
+                            base = "Unknown",
+                            position = item:GetModelCFrame().Position,
+                            prompt = hasPrompt,
+                            click = hasClick
+                        })
+                        Stats.found = Stats.found + 1
+                        Log("  ✅ Найден глобально: " .. item.Name)
+                    end
+                end
+            end
+        end
+    end
+    
+    Log(string.format("✅ Всего найдено: %d предметов", Stats.found))
+end
+
+-- ============================================
+-- ФУНКЦИЯ GRAB & TP HOME [web:31]
+-- ============================================
+
+local function GrabNearestBrainrot()
+    Log("👋 Поиск ближайшего брейнрота...")
+    
+    local nearest = nil
+    local nearestDist = Config.grabDistance
+    
+    -- Ищем ближайший брейнрот
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj.PrimaryPart then
+            local dist = (hrp.Position - obj.PrimaryPart.Position).Magnitude
+            
+            if dist < nearestDist then
+                local hasPrompt = obj:FindFirstChildWhichIsA("ProximityPrompt", true)
+                local hasClick = obj:FindFirstChildWhichIsA("ClickDetector", true)
+                
+                if hasPrompt or hasClick then
+                    nearest = obj
+                    nearestDist = dist
+                end
+            end
+        end
+    end
+    
+    if nearest then
+        Log("✅ Найден ближайший: " .. nearest.Name .. " (" .. math.floor(nearestDist) .. " studs)")
+        grabbedItem = nearest
         
-        Log(string.format("✅ Найдено предметов: %d", Stats.found))
-    end)
+        -- Телепортируемся к нему
+        hrp.CFrame = nearest:GetModelCFrame()
+        wait(0.3)
+        
+        -- Активируем взаимодействие
+        local prompt = nearest:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt then
+            if fireproximityprompt then
+                fireproximityprompt(prompt)
+            end
+        end
+        
+        local click = nearest:FindFirstChildWhichIsA("ClickDetector", true)
+        if click then
+            if fireclickdetector then
+                fireclickdetector(click)
+            end
+        end
+        
+        wait(0.2)
+        
+        return true
+    else
+        Log("❌ Нет брейнротов рядом (< " .. Config.grabDistance .. " studs)")
+        return false
+    end
+end
+
+local function TeleportHome()
+    Log("🏠 Телепорт на свою базу...")
+    
+    local basesFolder = workspace:FindFirstChild("Bases")
+    if not basesFolder then
+        -- Ищем в Map
+        local map = workspace:FindFirstChild("Map")
+        if map then
+            basesFolder = map:FindFirstChild("Bases")
+        end
+    end
+    
+    if basesFolder then
+        local myBase = basesFolder:FindFirstChild(player.Name)
+        if myBase then
+            -- Телепортируемся на базу
+            hrp.CFrame = myBase:GetModelCFrame() + Vector3.new(0, 10, 0)
+            Log("✅ Телепортировались на базу!")
+            
+            -- Если схватили предмет - пытаемся переместить его [web:31]
+            if grabbedItem and grabbedItem.PrimaryPart then
+                wait(0.3)
+                
+                pcall(function()
+                    -- Перемещаем брейнрот к себе на базу
+                    grabbedItem:MoveTo(hrp.Position)
+                    wait(0.1)
+                    grabbedItem.PrimaryPart.CFrame = hrp.CFrame + Vector3.new(0, 3, 0)
+                    
+                    -- Пытаемся изменить parent
+                    grabbedItem.Parent = myBase
+                    
+                    Log("✅ Брейнрот перемещен на базу!")
+                    Stats.success = Stats.success + 1
+                end)
+                
+                grabbedItem = nil
+            end
+            
+            return true
+        else
+            Log("❌ Своя база не найдена")
+        end
+    else
+        Log("❌ Папка Bases не найдена")
+    end
+    
+    return false
+end
+
+local function GrabAndTP()
+    if GrabNearestBrainrot() then
+        wait(0.5)
+        TeleportHome()
+    end
 end
 
 -- ============================================
@@ -319,27 +512,20 @@ local function TrySteal(item)
     Stats.attempts = Stats.attempts + 1
     
     return pcall(function()
-        Log(string.format("🎯 Попытка #%d: %s", Stats.attempts, item.model.Name))
+        Log(string.format("🎯 Попытка #%d: %s из базы %s", Stats.attempts, item.model.Name, item.base))
         
         -- Телепорт
-        local targetPos = item.model:GetModelCFrame()
-        hrp.CFrame = targetPos
+        hrp.CFrame = item.model:GetModelCFrame()
+        wait(0.4)
         
-        wait(0.3)
-        
-        -- Метод 1: ProximityPrompt
+        -- ProximityPrompt
         if item.prompt then
             for _, prompt in pairs(item.model:GetDescendants()) do
                 if prompt:IsA("ProximityPrompt") then
-                    Log("  → Активация ProximityPrompt")
-                    
-                    -- Проверяем есть ли функция
+                    Log("  → ProximityPrompt")
                     if fireproximityprompt then
                         fireproximityprompt(prompt)
-                    elseif prompt.Triggered then
-                        prompt.Triggered:Fire()
                     end
-                    
                     wait(0.5)
                     
                     if not item.model:IsDescendantOf(workspace) then
@@ -351,16 +537,14 @@ local function TrySteal(item)
             end
         end
         
-        -- Метод 2: ClickDetector
+        -- ClickDetector
         if item.click then
             for _, click in pairs(item.model:GetDescendants()) do
                 if click:IsA("ClickDetector") then
-                    Log("  → Активация ClickDetector")
-                    
+                    Log("  → ClickDetector")
                     if fireclickdetector then
                         fireclickdetector(click)
                     end
-                    
                     wait(0.5)
                     
                     if not item.model:IsDescendantOf(workspace) then
@@ -372,21 +556,13 @@ local function TrySteal(item)
             end
         end
         
-        -- Метод 3: Множественные касания
-        Log("  → Попытка касания")
+        -- Множественные касания
         for i = 1, 3 do
-            hrp.CFrame = targetPos
+            hrp.CFrame = item.model:GetModelCFrame()
             wait(0.2)
-            
-            if not item.model:IsDescendantOf(workspace) then
-                Stats.success = Stats.success + 1
-                Log("✅ УСПЕХ через касание!")
-                return true
-            end
         end
         
         Log("  ❌ Не удалось")
-        return false
     end)
 end
 
@@ -394,81 +570,56 @@ end
 -- КНОПКИ
 -- ============================================
 
-CreateButton("🔍 Найти Брейнроты", function()
-    FindBrainrots()
+CreateActionButton("🔍 Сканировать Workspace", Color3.fromRGB(100, 150, 255), function()
+    DeepScanWorkspace()
+end)
+
+CreateActionButton("🎯 Найти Брейнроты", Color3.fromRGB(255, 165, 0), function()
+    FindAllBrainrots()
+end)
+
+CreateActionButton("👋 Схватить и ТП домой", Color3.fromRGB(255, 100, 100), function()
+    GrabAndTP()
+end)
+
+CreateButton("🤖 Auto Grab & TP", function(enabled)
+    Config.autoGrabTP = enabled
+    if enabled then
+        Log("🚀 Auto Grab & TP включен!")
+    end
 end)
 
 CreateButton("🤖 Auto Steal", function(enabled)
     Config.autoSteal = enabled
     if enabled then
         Log("🚀 Auto Steal включен")
-        FindBrainrots()
-    else
-        Log("⏸️ Auto Steal выключен")
+        FindAllBrainrots()
     end
 end)
 
 CreateButton("🏃 Speed x2", function(enabled)
     Config.speedBoost = enabled
-    if enabled then
-        humanoid.WalkSpeed = Config.walkSpeed
-        Log("✅ Speed Boost включен")
-    else
-        humanoid.WalkSpeed = 16
-        Log("❌ Speed Boost выключен")
-    end
+    humanoid.WalkSpeed = enabled and Config.walkSpeed or 16
 end)
 
-CreateButton("✈️ Fly Mode", function(enabled)
+CreateButton("✈️ Fly", function(enabled)
     Config.flyMode = enabled
-    Log(enabled and "✅ Fly включен" or "❌ Fly выключен")
 end)
 
 CreateButton("👻 No Clip", function(enabled)
     Config.noClip = enabled
-    Log(enabled and "✅ No Clip включен" or "❌ No Clip выключен")
 end)
 
 CreateButton("👁️ ESP", function(enabled)
     Config.esp = enabled
-    Log(enabled and "✅ ESP включен" or "❌ ESP выключен")
 end)
 
--- Кнопка телепорта на базу
-local tpBtn = Instance.new("TextButton")
-tpBtn.Size = UDim2.new(1, -10, 0, 40)
-tpBtn.Position = UDim2.new(0, 5, 0, buttonY)
-tpBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
-tpBtn.Text = "🏠 Телепорт на базу"
-tpBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-tpBtn.Font = Enum.Font.GothamBold
-tpBtn.TextSize = 13
-tpBtn.Parent = ButtonScroll
-
-local tpCorner = Instance.new("UICorner")
-tpCorner.CornerRadius = UDim.new(0, 8)
-tpCorner.Parent = tpBtn
-
-tpBtn.MouseButton1Click:Connect(function()
-    pcall(function()
-        local bases = workspace:FindFirstChild("Bases")
-        if bases then
-            local myBase = bases:FindFirstChild(player.Name)
-            if myBase then
-                hrp.CFrame = myBase:GetModelCFrame() + Vector3.new(0, 10, 0)
-                Log("✅ Телепорт на свою базу")
-            else
-                Log("❌ Своя база не найдена")
-            end
-        end
-    end)
+CreateActionButton("🏠 TP на базу", Color3.fromRGB(70, 130, 180), function()
+    TeleportHome()
 end)
-
-buttonY = buttonY + 45
-ButtonScroll.CanvasSize = UDim2.new(0, 0, 0, buttonY + 5)
 
 -- ============================================
--- FLY СИСТЕМА
+-- FLY
 -- ============================================
 
 local flying = false
@@ -489,33 +640,19 @@ local function Fly()
     bg.Parent = hrp
     
     spawn(function()
-        local speed = Config.flySpeed
         while flying and Config.flyMode do
             local cam = workspace.CurrentCamera
             local dir = Vector3.new(0, 0, 0)
             
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                dir = dir + cam.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                dir = dir - cam.CFrame.LookVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                dir = dir - cam.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                dir = dir + cam.CFrame.RightVector
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                dir = dir + Vector3.new(0, 1, 0)
-            end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                dir = dir - Vector3.new(0, 1, 0)
-            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then dir = dir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then dir = dir - Vector3.new(0, 1, 0) end
             
-            bv.Velocity = dir * speed
+            bv.Velocity = dir * Config.flySpeed
             bg.CFrame = cam.CFrame
-            
             wait()
         end
     end)
@@ -534,61 +671,61 @@ end
 local function UpdateESP()
     if not Config.esp then
         for _, obj in pairs(workspace:GetDescendants()) do
-            if obj.Name == "BrainrotHighlight" then
-                obj:Destroy()
-            end
+            if obj.Name == "BrainrotHighlight" then obj:Destroy() end
         end
         return
     end
     
-    pcall(function()
-        for _, item in pairs(foundItems) do
-            if item.model and item.model:IsDescendantOf(workspace) then
-                if not item.model:FindFirstChild("BrainrotHighlight") then
-                    local h = Instance.new("Highlight")
-                    h.Name = "BrainrotHighlight"
-                    h.Adornee = item.model
-                    h.FillColor = Color3.fromRGB(255, 255, 0)
-                    h.FillTransparency = 0.5
-                    h.OutlineColor = Color3.fromRGB(255, 165, 0)
-                    h.OutlineTransparency = 0
-                    h.Parent = item.model
-                end
+    for _, item in pairs(foundItems) do
+        if item.model and item.model:IsDescendantOf(workspace) then
+            if not item.model:FindFirstChild("BrainrotHighlight") then
+                local h = Instance.new("Highlight")
+                h.Name = "BrainrotHighlight"
+                h.Adornee = item.model
+                h.FillColor = Color3.fromRGB(255, 255, 0)
+                h.FillTransparency = 0.5
+                h.OutlineColor = Color3.fromRGB(255, 165, 0)
+                h.Parent = item.model
             end
         end
-    end)
+    end
 end
 
 -- ============================================
 -- ГЛАВНЫЙ ЦИКЛ
 -- ============================================
 
-local lastSteal = tick()
+local lastAction = tick()
 local lastUpdate = tick()
 
-Log("🚀 Скрипт запущен!")
-Log("💡 Нажмите 'Найти Брейнроты' для начала")
+Log("🚀 Скрипт v6.0 запущен!")
+Log("💡 Нажмите 'Сканировать Workspace'")
 
 RunService.Heartbeat:Connect(function()
     if not _G.BrainrotActive then return end
     
     pcall(function()
-        -- Обновление статистики
+        -- Статистика
         if tick() - lastUpdate > 1 then
             StatsLabel.Text = string.format("📊 Попыток: %d | ✅ Успешно: %d | 🎯 Найдено: %d", 
                 Stats.attempts, Stats.success, Stats.found)
             lastUpdate = tick()
         end
         
+        -- Auto Grab & TP
+        if Config.autoGrabTP and tick() - lastAction > 3 then
+            GrabAndTP()
+            lastAction = tick()
+        end
+        
         -- Auto Steal
-        if Config.autoSteal and tick() - lastSteal > Config.stealDelay then
+        if Config.autoSteal and tick() - lastAction > Config.stealDelay then
             if #foundItems == 0 then
-                FindBrainrots()
+                FindAllBrainrots()
             elseif #foundItems > 0 then
-                local item = table.remove(foundItems, 1)
-                TrySteal(item)
+                TrySteal(table.remove(foundItems, 1))
             end
-            lastSteal = tick()
+            lastAction = tick()
         end
         
         -- Fly
@@ -612,19 +749,15 @@ RunService.Heartbeat:Connect(function()
     end)
 end)
 
--- Переподключение при респауне
 player.CharacterAdded:Connect(function(char)
     character = char
     humanoid = char:WaitForChild("Humanoid")
     hrp = char:WaitForChild("HumanoidRootPart")
-    
     wait(1)
-    
     if Config.speedBoost then
         humanoid.WalkSpeed = Config.walkSpeed
     end
-    
-    Log("🔄 Персонаж переподключен")
+    Log("🔄 Респаун")
 end)
 
-print("✅✅✅ СКРИПТ ПОЛНОСТЬЮ ЗАГРУЖЕН ✅✅✅")
+print("✅ СКРИПТ v6.0 ЗАГРУЖЕН!")
