@@ -1,0 +1,134 @@
+-- Основная проверка загрузки игры
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+-- Защита от повторного запуска
+if _G.BrainrotExecuted then
+    warn("Скрипт уже запущен!")
+    return
+end
+_G.BrainrotExecuted = true
+
+-- Сервисы
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid = character:WaitForChild("Humanoid")
+local hrp = character:WaitForChild("HumanoidRootPart")
+
+-- Создание GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BrainrotGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 300, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
+
+-- Заголовок
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Title.Text = "🧠 Brainrot Script"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 18
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = Title
+
+-- Функция создания кнопки
+local function CreateButton(text, position, callback)
+    local button = Instance.new("TextButton")
+    button.Size = UDim2.new(0, 250, 0, 40)
+    button.Position = position
+    button.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    button.Text = text
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.Gotham
+    button.TextSize = 14
+    button.Parent = MainFrame
+    
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, 8)
+    buttonCorner.Parent = button
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    return button
+end
+
+-- Переменные для функций
+local autoFarm = false
+local speedBoost = false
+local originalSpeed = humanoid.WalkSpeed
+
+-- Кнопка Auto Farm
+CreateButton("Auto Farm: OFF", UDim2.new(0, 25, 0, 70), function()
+    autoFarm = not autoFarm
+    local btn = MainFrame:FindFirstChild("Auto Farm: OFF") or MainFrame:FindFirstChild("Auto Farm: ON")
+    if btn then
+        btn.Text = autoFarm and "Auto Farm: ON" or "Auto Farm: OFF"
+        btn.BackgroundColor3 = autoFarm and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+    end
+end)
+
+-- Кнопка Speed Boost
+CreateButton("Speed Boost: OFF", UDim2.new(0, 25, 0, 120), function()
+    speedBoost = not speedBoost
+    local btn = MainFrame:FindFirstChild("Speed Boost: OFF") or MainFrame:FindFirstChild("Speed Boost: ON")
+    if btn then
+        btn.Text = speedBoost and "Speed Boost: ON" or "Speed Boost: OFF"
+        btn.BackgroundColor3 = speedBoost and Color3.fromRGB(0, 170, 0) or Color3.fromRGB(45, 45, 45)
+        humanoid.WalkSpeed = speedBoost and originalSpeed * 2 or originalSpeed
+    end
+end)
+
+-- Кнопка Teleport to Red Carpet
+CreateButton("TP to Red Carpet", UDim2.new(0, 25, 0, 170), function()
+    local carpet = workspace:FindFirstChild("RedCarpet") or workspace:FindFirstChild("Carpet")
+    if carpet then
+        hrp.CFrame = carpet.CFrame + Vector3.new(0, 5, 0)
+    end
+end)
+
+-- Кнопка сбора всех брейнротов
+CreateButton("Collect All Brainrots", UDim2.new(0, 25, 0, 220), function()
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Brainrot") then
+            hrp.CFrame = v.PrimaryPart.CFrame
+            wait(0.5)
+        end
+    end
+end)
+
+-- Основной цикл Auto Farm
+RunService.Heartbeat:Connect(function()
+    if autoFarm then
+        -- Логика автофарма
+        for _, item in pairs(workspace:GetDescendants()) do
+            if item.Name == "Brainrot" or item.Name == "Meme" then
+                if item:IsA("BasePart") and (hrp.Position - item.Position).Magnitude < 50 then
+                    hrp.CFrame = item.CFrame
+                    wait(0.3)
+                end
+            end
+        end
+    end
+end)
+
+print("✅ Brainrot Script загружен успешно!")
