@@ -1,4 +1,8 @@
--- Защита от повторного запуска
+-- ============================================
+-- STEAL A BRAINROT ADVANCED SCRIPT v4.0
+-- Глубокий анализ + Множественные методы
+-- ============================================
+
 if _G.BrainrotGUI then
     _G.BrainrotGUI:Destroy()
 end
@@ -9,33 +13,157 @@ local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local hrp = character:WaitForChild("HumanoidRootPart")
 
--- Переменные
+-- ============================================
+-- СИСТЕМА ЛОГИРОВАНИЯ И АНАЛИЗА
+-- ============================================
+
+local LogFrame
+local LogText = ""
+local MaxLogLines = 50
+
+local function Log(message, color)
+    color = color or Color3.fromRGB(255, 255, 255)
+    local timestamp = os.date("%H:%M:%S")
+    local logLine = "[" .. timestamp .. "] " .. message
+    print(logLine)
+    
+    LogText = logLine .. "\n" .. LogText
+    local lines = {}
+    for line in LogText:gmatch("[^\n]+") do
+        table.insert(lines, line)
+        if #lines >= MaxLogLines then break end
+    end
+    LogText = table.concat(lines, "\n")
+    
+    if LogFrame and LogFrame:FindFirstChild("LogDisplay") then
+        LogFrame.LogDisplay.Text = LogText
+    end
+end
+
+local function AnalyzeWorkspace()
+    Log("🔍 АНАЛИЗ WORKSPACE...", Color3.fromRGB(255, 255, 0))
+    
+    -- Анализ структуры workspace
+    local bases = workspace:FindFirstChild("Bases")
+    local map = workspace:FindFirstChild("Map")
+    
+    if bases then
+        Log("✅ Найдена папка Bases", Color3.fromRGB(0, 255, 0))
+        for _, base in pairs(bases:GetChildren()) do
+            Log("  └ База: " .. base.Name)
+            local brainrotCount = 0
+            for _, item in pairs(base:GetDescendants()) do
+                if item:IsA("Model") then
+                    brainrotCount = brainrotCount + 1
+                    Log("    └ Модель: " .. item.Name .. " (Parent: " .. item.Parent.Name .. ")")
+                end
+            end
+            Log("  └ Всего моделей в базе: " .. brainrotCount)
+        end
+    else
+        Log("❌ Папка Bases не найдена!", Color3.fromRGB(255, 0, 0))
+    end
+    
+    if map then
+        Log("✅ Найдена Map", Color3.fromRGB(0, 255, 0))
+        for _, child in pairs(map:GetChildren()) do
+            Log("  └ Map содержит: " .. child.Name .. " (" .. child.ClassName .. ")")
+        end
+    end
+    
+    -- Поиск конвейерной ленты [web:30][web:33]
+    local belt = workspace:FindFirstChild("Belt") or workspace:FindFirstChild("Conveyor") or workspace:FindFirstChild("ConveyorBelt")
+    if belt then
+        Log("✅ Найдена конвейерная лента: " .. belt.Name, Color3.fromRGB(0, 255, 0))
+    else
+        Log("⚠️ Конвейерная лента не найдена, ищу альтернативы...", Color3.fromRGB(255, 165, 0))
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj.Name:lower():find("belt") or obj.Name:lower():find("conveyor") then
+                Log("  └ Найден: " .. obj:GetFullName())
+            end
+        end
+    end
+end
+
+local function AnalyzeReplicatedStorage()
+    Log("🔍 АНАЛИЗ REPLICATED STORAGE...", Color3.fromRGB(255, 255, 0))
+    
+    -- Поиск RemoteEvents и RemoteFunctions [web:35]
+    local remotes = {}
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            table.insert(remotes, obj)
+            Log("📡 Remote найден: " .. obj:GetFullName() .. " (" .. obj.ClassName .. ")", Color3.fromRGB(100, 200, 255))
+        end
+    end
+    
+    Log("✅ Найдено remotes: " .. #remotes, Color3.fromRGB(0, 255, 0))
+    
+    -- Поиск важных RemoteFunctions
+    local spawnRemote = ReplicatedStorage:FindFirstChild("RF", true)
+    if spawnRemote then
+        Log("✅ Найден RF (RemoteFunction)", Color3.fromRGB(0, 255, 0))
+        for _, child in pairs(spawnRemote:GetDescendants()) do
+            Log("  └ " .. child:GetFullName())
+        end
+    end
+    
+    return remotes
+end
+
+-- ============================================
+-- ПЕРЕМЕННЫЕ
+-- ============================================
+
 local settings = {
+    -- Основные функции
     autoFarm = false,
     autoSteal = false,
-    instantSteal = false,
+    autoStealAdvanced = false,
+    autoBuy = false,
+    
+    -- Bypass методы
     bypassLock = false,
-    antiOwner = false,
-    autoLock = false,
+    useMultipleMethods = false,
+    
+    -- Утилиты
     speedBoost = false,
     flyMode = false,
     noClip = false,
+    infiniteJump = false,
+    
+    -- Визуальные
     esp = false,
+    beltESP = false,
+    
+    -- Защита
+    autoLock = false,
     antiKick = false,
+    
+    -- Продвинутые
+    debugMode = true,
+    autoAnalyze = false,
+    
     walkSpeed = 50,
     originalSpeed = humanoid.WalkSpeed
 }
 
-local targetBase = nil
-local insideEnemyBase = false
+local foundBrainrots = {}
+local remoteEvents = {}
+local stealAttempts = 0
+local successfulSteals = 0
 
--- Создание GUI
+-- ============================================
+-- СОЗДАНИЕ GUI
+-- ============================================
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "BrainrotGUI"
 ScreenGui.ResetOnSpawn = false
@@ -45,9 +173,9 @@ _G.BrainrotGUI = ScreenGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 340, 0, 520)
-MainFrame.Position = UDim2.new(0.5, -170, 0.5, -260)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MainFrame.Size = UDim2.new(0, 380, 0, 600)
+MainFrame.Position = UDim2.new(0.5, -190, 0.5, -300)
+MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
 MainFrame.Draggable = true
@@ -61,12 +189,11 @@ UICorner.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Name = "Title"
 Title.Size = UDim2.new(1, -50, 0, 50)
-Title.Position = UDim2.new(0, 0, 0, 0)
-Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Title.Text = "🧠 Brainrot Script v3"
+Title.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+Title.Text = "🧠 Advanced Brainrot v4.0"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 18
+Title.TextSize = 16
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
@@ -75,7 +202,6 @@ TitleCorner.Parent = Title
 
 -- Кнопка закрытия
 local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
 CloseButton.Size = UDim2.new(0, 40, 0, 40)
 CloseButton.Position = UDim2.new(1, -45, 0, 5)
 CloseButton.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
@@ -94,23 +220,72 @@ CloseButton.MouseButton1Click:Connect(function()
     _G.BrainrotGUI = nil
 end)
 
+-- Статистика
+local StatsFrame = Instance.new("Frame")
+StatsFrame.Size = UDim2.new(1, -20, 0, 60)
+StatsFrame.Position = UDim2.new(0, 10, 0, 60)
+StatsFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+StatsFrame.Parent = MainFrame
+
+local StatsCorner = Instance.new("UICorner")
+StatsCorner.CornerRadius = UDim.new(0, 8)
+StatsCorner.Parent = StatsFrame
+
+local StatsLabel = Instance.new("TextLabel")
+StatsLabel.Size = UDim2.new(1, -10, 1, -10)
+StatsLabel.Position = UDim2.new(0, 5, 0, 5)
+StatsLabel.BackgroundTransparency = 1
+StatsLabel.Text = "📊 Попыток: 0 | ✅ Успешно: 0 | 🎯 Найдено: 0"
+StatsLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+StatsLabel.Font = Enum.Font.Gotham
+StatsLabel.TextSize = 14
+StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatsLabel.Parent = StatsFrame
+
 -- Контейнер для кнопок
 local ButtonContainer = Instance.new("ScrollingFrame")
-ButtonContainer.Size = UDim2.new(1, -20, 1, -70)
-ButtonContainer.Position = UDim2.new(0, 10, 0, 60)
+ButtonContainer.Size = UDim2.new(1, -20, 0, 280)
+ButtonContainer.Position = UDim2.new(0, 10, 0, 130)
 ButtonContainer.BackgroundTransparency = 1
 ButtonContainer.BorderSizePixel = 0
 ButtonContainer.ScrollBarThickness = 6
-ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 750)
+ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 1100)
 ButtonContainer.Parent = MainFrame
 
--- Функция создания кнопки-переключателя
-local function CreateToggleButton(name, yPos, callback)
+-- Лог фрейм
+LogFrame = Instance.new("Frame")
+LogFrame.Size = UDim2.new(1, -20, 0, 150)
+LogFrame.Position = UDim2.new(0, 10, 0, 420)
+LogFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+LogFrame.Parent = MainFrame
+
+local LogCorner = Instance.new("UICorner")
+LogCorner.CornerRadius = UDim.new(0, 8)
+LogCorner.Parent = LogFrame
+
+local LogDisplay = Instance.new("TextLabel")
+LogDisplay.Name = "LogDisplay"
+LogDisplay.Size = UDim2.new(1, -10, 1, -10)
+LogDisplay.Position = UDim2.new(0, 5, 0, 5)
+LogDisplay.BackgroundTransparency = 1
+LogDisplay.Text = "📋 Лог загрузки..."
+LogDisplay.TextColor3 = Color3.fromRGB(150, 255, 150)
+LogDisplay.Font = Enum.Font.Code
+LogDisplay.TextSize = 10
+LogDisplay.TextXAlignment = Enum.TextXAlignment.Left
+LogDisplay.TextYAlignment = Enum.TextYAlignment.Top
+LogDisplay.TextWrapped = true
+LogDisplay.Parent = LogFrame
+
+-- Функция создания кнопки
+local yPosition = 10
+
+local function CreateToggleButton(name, callback)
     local button = Instance.new("TextButton")
     button.Name = name
     button.Size = UDim2.new(1, -10, 0, 45)
-    button.Position = UDim2.new(0, 5, 0, yPos)
-    button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    button.Position = UDim2.new(0, 5, 0, yPosition)
+    button.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
     button.Text = name .. ": OFF"
     button.TextColor3 = Color3.fromRGB(200, 200, 200)
     button.Font = Enum.Font.Gotham
@@ -125,444 +300,443 @@ local function CreateToggleButton(name, yPos, callback)
     button.MouseButton1Click:Connect(function()
         enabled = not enabled
         button.Text = name .. (enabled and ": ON" or ": OFF")
-        button.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(50, 50, 50)
+        button.BackgroundColor3 = enabled and Color3.fromRGB(0, 170, 80) or Color3.fromRGB(50, 50, 55)
         button.TextColor3 = enabled and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
         callback(enabled)
     end)
     
+    yPosition = yPosition + 55
     return button
 end
 
--- ===================== BYPASS LOCKED BASE СИСТЕМА =====================
--- Метод 1: Quantum Cloner + Invisibility Bypass [web:17][web:28]
-local function QuantumClonerBypass(targetBaseName)
-    pcall(function()
-        local bases = workspace:FindFirstChild("Bases")
-        if not bases then return end
-        
-        local enemyBase = bases:FindFirstChild(targetBaseName)
-        if not enemyBase then return end
-        
-        -- Проверяем есть ли Quantum Cloner в инвентаре
-        local hasCloner = false
-        for _, tool in pairs(player.Backpack:GetChildren()) do
-            if tool.Name:lower():find("cloner") or tool.Name:lower():find("quantum") then
-                hasCloner = true
-                tool.Parent = character
-                wait(0.1)
-                break
+local function CreateActionButton(name, color, callback)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.Size = UDim2.new(1, -10, 0, 45)
+    button.Position = UDim2.new(0, 5, 0, yPosition)
+    button.BackgroundColor3 = color
+    button.Text = name
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.Font = Enum.Font.GothamBold
+    button.TextSize = 14
+    button.Parent = ButtonContainer
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = button
+    
+    button.MouseButton1Click:Connect(callback)
+    
+    yPosition = yPosition + 55
+    return button
+end
+
+-- ============================================
+-- СИСТЕМА ПОИСКА И АНАЛИЗА БРЕЙНРОТОВ
+-- ============================================
+
+local function FindAllBrainrots()
+    foundBrainrots = {}
+    
+    -- Метод 1: Поиск в Bases [web:29][web:30]
+    local bases = workspace:FindFirstChild("Bases")
+    if bases then
+        for _, base in pairs(bases:GetChildren()) do
+            if base.Name ~= player.Name then
+                for _, item in pairs(base:GetDescendants()) do
+                    if item:IsA("Model") and not item:IsA("Accessory") then
+                        -- Проверяем это брейнрот по различным признакам
+                        local isBrainrot = false
+                        
+                        -- Проверка 1: Название содержит характерные слова
+                        local name = item.Name:lower()
+                        if name:find("brain") or name:find("pizzanini") or name:find("cheese") 
+                            or name:find("talpa") or name:find("tralala") or name:find("vacca") 
+                            or name:find("noobini") or name:find("tim") then
+                            isBrainrot = true
+                        end
+                        
+                        -- Проверка 2: Есть ProximityPrompt
+                        if item:FindFirstChildWhichIsA("ProximityPrompt", true) then
+                            isBrainrot = true
+                        end
+                        
+                        -- Проверка 3: Есть ClickDetector
+                        if item:FindFirstChildWhichIsA("ClickDetector", true) then
+                            isBrainrot = true
+                        end
+                        
+                        if isBrainrot then
+                            table.insert(foundBrainrots, {
+                                model = item,
+                                base = base.Name,
+                                position = item:GetModelCFrame().Position,
+                                name = item.Name
+                            })
+                            Log("🎯 Найден брейнрот: " .. item.Name .. " в базе " .. base.Name)
+                        end
+                    end
+                end
             end
         end
+    end
+    
+    -- Метод 2: Поиск на конвейерной ленте [web:30][web:33]
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if (obj.Name:lower():find("belt") or obj.Name:lower():find("conveyor")) and obj:IsA("Model") then
+            for _, item in pairs(obj:GetDescendants()) do
+                if item:IsA("Model") and item:FindFirstChild("PrimaryPart") then
+                    table.insert(foundBrainrots, {
+                        model = item,
+                        base = "Belt",
+                        position = item:GetModelCFrame().Position,
+                        name = item.Name
+                    })
+                    Log("🎯 Найден брейнрот на ленте: " .. item.Name)
+                end
+            end
+        end
+    end
+    
+    Log("✅ Всего найдено брейнротов: " .. #foundBrainrots, Color3.fromRGB(0, 255, 0))
+    return foundBrainrots
+end
+
+-- ============================================
+-- МНОЖЕСТВЕННЫЕ МЕТОДЫ КРАЖИ
+-- ============================================
+
+-- Метод 1: ProximityPrompt [web:31]
+local function StealMethod_ProximityPrompt(brainrot)
+    pcall(function()
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": ProximityPrompt на " .. brainrot.name)
         
-        if hasCloner then
-            -- Клонируемся внутрь базы
-            local baseCenter = enemyBase:GetModelCFrame()
-            hrp.CFrame = baseCenter + Vector3.new(0, 5, 0)
+        -- Телепортируемся к брейнроту
+        hrp.CFrame = brainrot.model:GetModelCFrame()
+        wait(0.2)
+        
+        -- Ищем ProximityPrompt
+        local prompt = brainrot.model:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt then
+            Log("  └ ProximityPrompt найден: " .. prompt.Name)
+            fireproximityprompt(prompt)
             wait(0.3)
             
-            -- Активируем невидимость если есть
-            for _, tool in pairs(player.Backpack:GetChildren()) do
-                if tool.Name:lower():find("invisibility") or tool.Name:lower():find("cloak") then
-                    tool.Parent = character
+            -- Проверяем успех
+            if brainrot.model.Parent ~= workspace and brainrot.model.Parent ~= brainrot.model.Parent then
+                successfulSteals = successfulSteals + 1
+                Log("✅ УСПЕХ! Украден: " .. brainrot.name, Color3.fromRGB(0, 255, 0))
+                return true
+            end
+        else
+            Log("  └ ProximityPrompt не найден", Color3.fromRGB(255, 100, 0))
+        end
+    end)
+    return false
+end
+
+-- Метод 2: ClickDetector [web:31]
+local function StealMethod_ClickDetector(brainrot)
+    pcall(function()
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": ClickDetector на " .. brainrot.name)
+        
+        hrp.CFrame = brainrot.model:GetModelCFrame()
+        wait(0.2)
+        
+        local click = brainrot.model:FindFirstChildWhichIsA("ClickDetector", true)
+        if click then
+            Log("  └ ClickDetector найден")
+            fireclickdetector(click)
+            wait(0.3)
+            
+            if not brainrot.model:IsDescendantOf(workspace) then
+                successfulSteals = successfulSteals + 1
+                Log("✅ УСПЕХ через ClickDetector!", Color3.fromRGB(0, 255, 0))
+                return true
+            end
+        else
+            Log("  └ ClickDetector не найден", Color3.fromRGB(255, 100, 0))
+        end
+    end)
+    return false
+end
+
+-- Метод 3: Касание (Touch) [web:31][web:36]
+local function StealMethod_Touch(brainrot)
+    pcall(function()
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": Касание " .. brainrot.name)
+        
+        -- Находим части для касания
+        local parts = {}
+        for _, part in pairs(brainrot.model:GetDescendants()) do
+            if part:IsA("BasePart") then
+                table.insert(parts, part)
+            end
+        end
+        
+        if #parts > 0 then
+            Log("  └ Найдено частей для касания: " .. #parts)
+            
+            -- Касаемся каждой части
+            for _, part in pairs(parts) do
+                hrp.CFrame = part.CFrame
+                wait(0.1)
+                
+                -- Проверяем был ли триггер
+                if not brainrot.model:IsDescendantOf(workspace) then
+                    successfulSteals = successfulSteals + 1
+                    Log("✅ УСПЕХ через касание!", Color3.fromRGB(0, 255, 0))
+                    return true
+                end
+            end
+        end
+    end)
+    return false
+end
+
+-- Метод 4: RemoteEvent [web:35]
+local function StealMethod_Remote(brainrot)
+    pcall(function()
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": RemoteEvent на " .. brainrot.name)
+        
+        -- Ищем remotes связанные с кражей
+        for _, remote in pairs(remoteEvents) do
+            if remote:IsA("RemoteEvent") then
+                local remoteName = remote.Name:lower()
+                if remoteName:find("steal") or remoteName:find("take") or remoteName:find("grab") 
+                    or remoteName:find("pickup") or remoteName:find("collect") then
+                    
+                    Log("  └ Пробуем remote: " .. remote.Name)
+                    
+                    -- Пробуем разные аргументы
+                    remote:FireServer(brainrot.model)
                     wait(0.1)
-                    if tool:FindFirstChild("Handle") then
-                        tool:Activate()
+                    remote:FireServer(brainrot.model.Name)
+                    wait(0.1)
+                    remote:FireServer(brainrot.model, player)
+                    wait(0.1)
+                    
+                    if not brainrot.model:IsDescendantOf(workspace) then
+                        successfulSteals = successfulSteals + 1
+                        Log("✅ УСПЕХ через Remote: " .. remote.Name, Color3.fromRGB(0, 255, 0))
+                        return true
                     end
-                    break
-                end
-            end
-            
-            insideEnemyBase = true
-            print("✅ Проникли в базу через Quantum Cloner!")
-        end
-    end)
-end
-
--- Метод 2: Admin Panel Method - контроль владельца [web:17]
-local function AdminPanelBypass(targetPlayer)
-    pcall(function()
-        local adminPanel = player.Backpack:FindFirstChild("Admin Panel") or character:FindFirstChild("Admin Panel")
-        if adminPanel then
-            adminPanel.Parent = character
-            wait(0.1)
-            
-            -- Активируем контроль над владельцем базы
-            local remotes = ReplicatedStorage:GetDescendants()
-            for _, remote in pairs(remotes) do
-                if remote:IsA("RemoteEvent") and remote.Name:lower():find("admin") then
-                    remote:FireServer("Control", targetPlayer)
-                    print("✅ Контролируем владельца базы через Admin Panel!")
-                    wait(5) -- Держим контроль 5 секунд
-                    remote:FireServer("Release", targetPlayer)
                 end
             end
         end
     end)
+    return false
 end
 
--- Метод 3: Wall Bypass через Collision [web:17][web:28]
-local function WallBypass(targetBase)
+-- Метод 5: Parent Manipulation [web:31]
+local function StealMethod_ParentManipulation(brainrot)
     pcall(function()
-        -- Отключаем коллизию со стенами базы
-        for _, part in pairs(targetBase:GetDescendants()) do
-            if part:IsA("BasePart") and (part.Name:lower():find("wall") or part.Name:lower():find("door") or part.Name:lower():find("laser")) then
-                part.CanCollide = false
-                part.Transparency = 0.5
-            end
-        end
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": Parent Manipulation на " .. brainrot.name)
         
-        -- Телепортируемся внутрь
-        hrp.CFrame = targetBase:GetModelCFrame() + Vector3.new(0, 5, 0)
-        print("✅ Прошли сквозь стены базы!")
-    end)
-end
-
--- Метод 4: Body Swap + Trap Bypass [web:17]
-local function BodySwapBypass(targetPlayer)
-    pcall(function()
-        local bodySwap = player.Backpack:FindFirstChild("Body Swap") or character:FindFirstChild("Body Swap")
-        if not bodySwap then return end
+        hrp.CFrame = brainrot.model:GetModelCFrame()
+        wait(0.2)
         
-        -- Ставим ловушки возле базы жертвы
-        local trap = player.Backpack:FindFirstChild("Trap")
-        if trap then
-            trap.Parent = character
-            wait(0.1)
+        -- Пробуем изменить parent
+        local originalParent = brainrot.model.Parent
+        
+        -- Метод 1: Переместить к себе
+        brainrot.model.Parent = character
+        wait(0.2)
+        
+        if brainrot.model.Parent == character then
+            successfulSteals = successfulSteals + 1
+            Log("✅ УСПЕХ! Брейнрот перемещен к персонажу", Color3.fromRGB(0, 255, 0))
             
+            -- Переносим в свою базу
             local bases = workspace:FindFirstChild("Bases")
             if bases then
-                local enemyBase = bases:FindFirstChild(targetPlayer.Name)
-                if enemyBase then
-                    -- Ставим 4 ловушки сзади базы
-                    local backPos = enemyBase:GetModelCFrame() * CFrame.new(0, 0, 10)
-                    for i = 1, 4 do
-                        if trap then
-                            trap:Activate()
-                            wait(0.5)
-                        end
-                    end
-                    
-                    -- Свапаемся с владельцем когда он попытается закрыть базу
-                    bodySwap.Parent = character
-                    wait(0.1)
-                    bodySwap:Activate()
-                    print("✅ Заблокировали владельца в ловушках!")
+                local myBase = bases:FindFirstChild(player.Name)
+                if myBase then
+                    brainrot.model.Parent = myBase
+                    brainrot.model:MoveTo(myBase:GetModelCFrame().Position)
+                    Log("✅ Брейнрот перемещен в свою базу!")
                 end
             end
+            return true
         end
+        
+        -- Метод 2: Через workspace
+        brainrot.model.Parent = workspace
+        wait(0.1)
+        brainrot.model:MoveTo(hrp.Position)
+        wait(0.2)
     end)
+    return false
 end
 
--- Метод 5: Instant Teleport Exploit [web:23]
-local function InstantTeleportBypass(targetBase)
+-- Метод 6: Teleport and Grab [web:31][web:36]
+local function StealMethod_TeleportGrab(brainrot)
     pcall(function()
-        -- Мгновенная телепортация внутрь базы минуя все проверки
-        local oldCFrame = hrp.CFrame
+        stealAttempts = stealAttempts + 1
+        Log("🔄 Попытка #" .. stealAttempts .. ": Teleport + Multiple Grabs на " .. brainrot.name)
         
-        for i = 1, 3 do
-            hrp.CFrame = targetBase:GetModelCFrame() + Vector3.new(0, 3, 0)
-            wait(0.1)
-        end
+        -- Быстрая телепортация туда-сюда
+        local originalCFrame = hrp.CFrame
         
-        -- Отключаем все триггеры безопасности
-        for _, trigger in pairs(targetBase:GetDescendants()) do
-            if trigger:IsA("Part") and trigger.Name:lower():find("trigger") then
-                trigger:Destroy()
-            end
-        end
-        
-        print("✅ Мгновенно телепортировались в базу!")
-    end)
-end
-
--- Метод 6: Anti-Owner Control [web:17]
-local function AntiOwnerControl(targetPlayer)
-    pcall(function()
-        if not targetPlayer.Character then return end
-        
-        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if targetHRP then
-            -- Используем Medusa Head для заморозки владельца
-            local medusa = player.Backpack:FindFirstChild("Medusa Head") or character:FindFirstChild("Medusa Head")
-            if medusa then
-                medusa.Parent = character
-                wait(0.1)
-                
-                -- Активируем Medusa на владельца
-                hrp.CFrame = targetHRP.CFrame + Vector3.new(0, 0, 5)
-                wait(0.1)
-                medusa:Activate()
-                
-                print("✅ Заморозили владельца базы Medusa Head!")
-                
-                -- Телепортируем его подальше от базы с помощью Webslinger
-                wait(1)
-                local webslinger = player.Backpack:FindFirstChild("Webslinger")
-                if webslinger then
-                    webslinger.Parent = character
-                    wait(0.1)
-                    webslinger:Activate()
-                    print("✅ Оттащили владельца от базы!")
-                end
+        for i = 1, 5 do
+            hrp.CFrame = brainrot.model:GetModelCFrame()
+            wait(0.05)
+            
+            -- Пробуем все методы взаимодействия одновременно
+            local prompt = brainrot.model:FindFirstChildWhichIsA("ProximityPrompt", true)
+            if prompt then fireproximityprompt(prompt) end
+            
+            local click = brainrot.model:FindFirstChildWhichIsA("ClickDetector", true)
+            if click then fireclickdetector(click) end
+            
+            wait(0.05)
+            
+            if not brainrot.model:IsDescendantOf(workspace) then
+                successfulSteals = successfulSteals + 1
+                Log("✅ УСПЕХ после " .. i .. " попыток!", Color3.fromRGB(0, 255, 0))
+                return true
             end
         end
     end)
+    return false
 end
 
--- Главная функция обхода заблокированной базы
-local function BypassLockedBase()
-    if not settings.bypassLock then return end
+-- Главная функция кражи
+local function StealBrainrot(brainrot)
+    Log("🎯 НАЧАЛО КРАЖИ: " .. brainrot.name .. " из базы " .. brainrot.base)
     
-    local bases = workspace:FindFirstChild("Bases")
-    if not bases then return end
+    local methods = {
+        {name = "ProximityPrompt", func = StealMethod_ProximityPrompt},
+        {name = "ClickDetector", func = StealMethod_ClickDetector},
+        {name = "Touch", func = StealMethod_Touch},
+        {name = "RemoteEvent", func = StealMethod_Remote},
+        {name = "ParentManipulation", func = StealMethod_ParentManipulation},
+        {name = "TeleportGrab", func = StealMethod_TeleportGrab}
+    }
     
-    -- Находим лучшую базу для ограбления
-    for _, base in pairs(bases:GetChildren()) do
-        if base.Name ~= player.Name then
-            pcall(function()
-                local brainrotCount = 0
-                for _, item in pairs(base:GetDescendants()) do
-                    if item:IsA("Model") and item.Name:lower():find("brainrot") then
-                        brainrotCount = brainrotCount + 1
-                    end
-                end
-                
-                -- Если в базе больше 3 брейнротов - атакуем
-                if brainrotCount >= 3 then
-                    targetBase = base
-                    local targetPlayer = Players:FindFirstChild(base.Name)
-                    
-                    print("🎯 Цель найдена: " .. base.Name .. " (" .. brainrotCount .. " brainrots)")
-                    
-                    -- Используем все методы обхода последовательно
-                    
-                    -- 1. Сначала контролируем владельца если он онлайн
-                    if targetPlayer and settings.antiOwner then
-                        AntiOwnerControl(targetPlayer)
-                        wait(1)
-                    end
-                    
-                    -- 2. Клонируемся внутрь базы
-                    QuantumClonerBypass(base.Name)
-                    wait(0.5)
-                    
-                    -- 3. Если не получилось - используем wall bypass
-                    if not insideEnemyBase then
-                        WallBypass(base)
-                        wait(0.5)
-                    end
-                    
-                    -- 4. Если владелец онлайн - используем Body Swap метод
-                    if targetPlayer then
-                        BodySwapBypass(targetPlayer)
-                        wait(0.5)
-                    end
-                    
-                    -- 5. Крайний случай - instant teleport
-                    if not insideEnemyBase then
-                        InstantTeleportBypass(base)
-                    end
-                    
-                    -- 6. Красть все ценное
-                    wait(1)
-                    for _, brainrot in pairs(base:GetDescendants()) do
-                        if brainrot:IsA("Model") and brainrot.Name:lower():find("brainrot") then
-                            if settings.instantSteal then
-                                -- Мгновенная кража
-                                brainrot.Parent = workspace
-                                wait(0.1)
-                                brainrot:MoveTo(hrp.Position)
-                            else
-                                hrp.CFrame = brainrot:GetModelCFrame()
-                                wait(0.3)
-                                fireproximityprompt(brainrot:FindFirstChildWhichIsA("ProximityPrompt", true))
-                            end
-                            wait(0.2)
-                        end
-                    end
-                    
-                    print("✅ Ограбление завершено!")
-                    insideEnemyBase = false
-                    
-                    -- Возвращаемся на свою базу
-                    local myBase = bases:FindFirstChild(player.Name)
-                    if myBase then
-                        hrp.CFrame = myBase:GetModelCFrame() + Vector3.new(0, 10, 0)
-                    end
-                    
-                    wait(5) -- Задержка перед следующей атакой
-                end
-            end)
+    -- Пробуем каждый метод
+    for _, method in ipairs(methods) do
+        Log("📋 Метод: " .. method.name)
+        local success = method.func(brainrot)
+        if success then
+            Log("✅ Метод " .. method.name .. " СРАБОТАЛ!", Color3.fromRGB(0, 255, 0))
+            return true
         end
+        wait(0.2)
     end
+    
+    Log("❌ Все методы провалились для " .. brainrot.name, Color3.fromRGB(255, 0, 0))
+    return false
 end
 
--- ===================== КНОПКИ GUI =====================
+-- ============================================
+-- КНОПКИ GUI
+-- ============================================
 
-CreateToggleButton("Auto Farm", 10, function(enabled)
-    settings.autoFarm = enabled
+CreateActionButton("🔍 Анализировать Workspace", Color3.fromRGB(255, 165, 0), function()
+    AnalyzeWorkspace()
 end)
 
-CreateToggleButton("Auto Steal", 65, function(enabled)
+CreateActionButton("📡 Анализ ReplicatedStorage", Color3.fromRGB(100, 150, 255), function()
+    remoteEvents = AnalyzeReplicatedStorage()
+end)
+
+CreateActionButton("🎯 Найти все Брейнроты", Color3.fromRGB(0, 200, 100), function()
+    FindAllBrainrots()
+end)
+
+CreateToggleButton("🤖 Auto Steal (Method 1-6)", function(enabled)
     settings.autoSteal = enabled
+    if enabled then
+        Log("🚀 AUTO STEAL АКТИВИРОВАН!", Color3.fromRGB(0, 255, 0))
+    end
 end)
 
-CreateToggleButton("Instant Steal", 120, function(enabled)
-    settings.instantSteal = enabled
+CreateToggleButton("⚡ Advanced Auto Steal", function(enabled)
+    settings.autoStealAdvanced = enabled
 end)
 
--- 🔥 НОВАЯ КНОПКА - BYPASS LOCKED BASE
-CreateToggleButton("🔓 Bypass Locked Base", 175, function(enabled)
+CreateToggleButton("🛒 Auto Buy from Belt", function(enabled)
+    settings.autoBuy = enabled
+end)
+
+CreateToggleButton("🔓 Bypass Locked Bases", function(enabled)
     settings.bypassLock = enabled
-    if enabled then
-        print("🔓 Система обхода заблокированных баз активирована!")
-        print("📋 Используемые методы:")
-        print("  - Quantum Cloner Bypass")
-        print("  - Wall Collision Bypass")
-        print("  - Admin Panel Control")
-        print("  - Body Swap + Trap Method")
-        print("  - Instant Teleport Exploit")
-    end
 end)
 
--- 🔥 НОВАЯ КНОПКА - ANTI OWNER CONTROL
-CreateToggleButton("⚔️ Anti-Owner Control", 230, function(enabled)
-    settings.antiOwner = enabled
-    if enabled then
-        print("⚔️ Контроль владельца базы активирован!")
-        print("  - Medusa Head Stun")
-        print("  - Webslinger Drag")
-        print("  - Trap Lock")
-    end
-end)
-
-CreateToggleButton("Auto Lock Base", 285, function(enabled)
-    settings.autoLock = enabled
-end)
-
-CreateToggleButton("Speed Boost (2x)", 340, function(enabled)
+CreateToggleButton("🏃 Speed Boost x3", function(enabled)
     settings.speedBoost = enabled
-    if enabled then
-        humanoid.WalkSpeed = settings.walkSpeed
-    else
-        humanoid.WalkSpeed = settings.originalSpeed
-    end
+    humanoid.WalkSpeed = enabled and settings.walkSpeed * 1.5 or settings.originalSpeed
 end)
 
-CreateToggleButton("Fly Mode", 395, function(enabled)
+CreateToggleButton("✈️ Fly Mode (WASD)", function(enabled)
     settings.flyMode = enabled
 end)
 
-CreateToggleButton("No Clip", 450, function(enabled)
+CreateToggleButton("👻 No Clip", function(enabled)
     settings.noClip = enabled
 end)
 
-CreateToggleButton("ESP (Players)", 505, function(enabled)
+CreateToggleButton("👁️ ESP (Players + Brainrots)", function(enabled)
     settings.esp = enabled
 end)
 
-CreateToggleButton("Anti Kick", 560, function(enabled)
+CreateToggleButton("🎨 Belt ESP", function(enabled)
+    settings.beltESP = enabled
+end)
+
+CreateToggleButton("🔒 Auto Lock My Base", function(enabled)
+    settings.autoLock = enabled
+end)
+
+CreateToggleButton("🛡️ Anti Kick", function(enabled)
     settings.antiKick = enabled
 end)
 
--- Кнопка телепорта к магазину
-local shopButton = Instance.new("TextButton")
-shopButton.Size = UDim2.new(1, -10, 0, 45)
-shopButton.Position = UDim2.new(0, 5, 0, 615)
-shopButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
-shopButton.Text = "🛒 TP to Shop"
-shopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-shopButton.Font = Enum.Font.GothamBold
-shopButton.TextSize = 15
-shopButton.Parent = ButtonContainer
-
-local shopCorner = Instance.new("UICorner")
-shopCorner.CornerRadius = UDim.new(0, 8)
-shopCorner.Parent = shopButton
-
-shopButton.MouseButton1Click:Connect(function()
-    local shop = workspace:FindFirstChild("Shop") or workspace:FindFirstChild("Store")
-    if shop then
-        hrp.CFrame = shop:GetModelCFrame() + Vector3.new(0, 5, 0)
-    end
-end)
-
--- Кнопка телепорта к базе
-local baseButton = Instance.new("TextButton")
-baseButton.Size = UDim2.new(1, -10, 0, 45)
-baseButton.Position = UDim2.new(0, 5, 0, 670)
-baseButton.BackgroundColor3 = Color3.fromRGB(180, 130, 70)
-baseButton.Text = "🏠 TP to My Base"
-baseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-baseButton.Font = Enum.Font.GothamBold
-baseButton.TextSize = 15
-baseButton.Parent = ButtonContainer
-
-local baseCorner = Instance.new("UICorner")
-baseCorner.CornerRadius = UDim.new(0, 8)
-baseCorner.Parent = baseButton
-
-baseButton.MouseButton1Click:Connect(function()
+CreateActionButton("🏠 TP to My Base", Color3.fromRGB(70, 130, 180), function()
     local bases = workspace:FindFirstChild("Bases")
-    if bases then
-        local playerBase = bases:FindFirstChild(player.Name)
-        if playerBase then
-            hrp.CFrame = playerBase:GetModelCFrame() + Vector3.new(0, 10, 0)
-        end
+    if bases and bases:FindFirstChild(player.Name) then
+        hrp.CFrame = bases[player.Name]:GetModelCFrame() + Vector3.new(0, 10, 0)
+        Log("✅ Телепорт на свою базу")
     end
 end)
 
--- ESP система
-local function CreateESP()
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer ~= player and otherPlayer.Character then
-            local char = otherPlayer.Character
-            if not char:FindFirstChild("ESP_Highlight") then
-                local highlight = Instance.new("Highlight")
-                highlight.Name = "ESP_Highlight"
-                highlight.Adornee = char
-                highlight.FillColor = Color3.fromRGB(255, 0, 0)
-                highlight.FillTransparency = 0.5
-                highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
-                highlight.OutlineTransparency = 0
-                highlight.Parent = char
+CreateActionButton("🛒 TP to Belt/Shop", Color3.fromRGB(180, 130, 70), function()
+    -- Поиск конвейерной ленты [web:30][web:33]
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name:lower():find("belt") or obj.Name:lower():find("conveyor") then
+            if obj:IsA("Model") or obj:IsA("Part") then
+                hrp.CFrame = obj:GetModelCFrame and obj:GetModelCFrame() or obj.CFrame
+                Log("✅ Телепорт к конвейеру")
+                return
             end
         end
     end
-end
+    Log("❌ Конвейер не найден", Color3.fromRGB(255, 0, 0))
+end)
 
-local function RemoveESP()
-    for _, otherPlayer in pairs(Players:GetPlayers()) do
-        if otherPlayer.Character then
-            local esp = otherPlayer.Character:FindFirstChild("ESP_Highlight")
-            if esp then esp:Destroy() end
-        end
-    end
-end
+CreateActionButton("🔄 Переподключить персонажа", Color3.fromRGB(150, 100, 200), function()
+    character = player.Character
+    humanoid = character:WaitForChild("Humanoid")
+    hrp = character:WaitForChild("HumanoidRootPart")
+    Log("✅ Персонаж переподключен")
+end)
 
--- Auto Farm система
-local function AutoFarm()
-    if not settings.autoFarm then return end
-    
-    for _, item in pairs(workspace:GetDescendants()) do
-        if item:IsA("Model") and (item.Name:lower():find("brainrot") or item.Name:lower():find("brain")) then
-            if item.PrimaryPart and (hrp.Position - item.PrimaryPart.Position).Magnitude < 100 then
-                pcall(function()
-                    hrp.CFrame = item.PrimaryPart.CFrame
-                    wait(0.2)
-                    fireproximityprompt(item:FindFirstChildWhichIsA("ProximityPrompt", true))
-                end)
-            end
-        end
-    end
-end
+-- ============================================
+-- FLY MODE
+-- ============================================
 
--- Fly Mode
 local flying = false
 local flySpeed = 50
 local bodyVelocity, bodyGyro
 
 local function StartFly()
+    if flying then return end
     flying = true
     
     bodyVelocity = Instance.new("BodyVelocity")
@@ -613,84 +787,136 @@ local function StopFly()
     if bodyGyro then bodyGyro:Destroy() end
 end
 
--- No Clip
-local function NoClip()
-    if settings.noClip then
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    else
-        for _, part in pairs(character:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                part.CanCollide = true
+-- ============================================
+-- ESP СИСТЕМА
+-- ============================================
+
+local function CreateBrainrotESP()
+    for _, brainrot in pairs(foundBrainrots) do
+        if brainrot.model and brainrot.model:IsDescendantOf(workspace) then
+            if not brainrot.model:FindFirstChild("ESP_Highlight") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_Highlight"
+                highlight.Adornee = brainrot.model
+                highlight.FillColor = Color3.fromRGB(255, 255, 0)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineColor = Color3.fromRGB(255, 165, 0)
+                highlight.OutlineTransparency = 0
+                highlight.Parent = brainrot.model
             end
         end
     end
 end
 
--- Auto Lock Base
+local function CreatePlayerESP()
+    for _, otherPlayer in pairs(Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character then
+            local char = otherPlayer.Character
+            if not char:FindFirstChild("ESP_Highlight") then
+                local highlight = Instance.new("Highlight")
+                highlight.Name = "ESP_Highlight"
+                highlight.Adornee = char
+                highlight.FillColor = Color3.fromRGB(255, 0, 0)
+                highlight.FillTransparency = 0.5
+                highlight.OutlineColor = Color3.fromRGB(255, 255, 0)
+                highlight.OutlineTransparency = 0
+                highlight.Parent = char
+            end
+        end
+    end
+end
+
+local function RemoveAllESP()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj.Name == "ESP_Highlight" then
+            obj:Destroy()
+        end
+    end
+end
+
+-- ============================================
+-- AUTO LOCK BASE [web:33]
+-- ============================================
+
+local lastLockTime = 0
 local function AutoLockBase()
     if not settings.autoLock then return end
+    if tick() - lastLockTime < 70 then return end -- Cooldown 60 секунд + запас [web:32][web:33]
     
-    local bases = workspace:FindFirstChild("Bases")
-    if not bases then return end
-    
-    local myBase = bases:FindFirstChild(player.Name)
-    if myBase then
-        -- Проверяем открыта ли база
-        local lockPart = myBase:FindFirstChild("LockBase") or myBase:FindFirstChild("Lock")
-        if lockPart then
-            pcall(function()
-                fireproximityprompt(lockPart:FindFirstChildWhichIsA("ProximityPrompt", true))
-            end)
+    pcall(function()
+        local bases = workspace:FindFirstChild("Bases")
+        if not bases then return end
+        
+        local myBase = bases:FindFirstChild(player.Name)
+        if not myBase then return end
+        
+        -- Ищем кнопку блокировки
+        for _, obj in pairs(myBase:GetDescendants()) do
+            if obj:IsA("ProximityPrompt") and (obj.Name:lower():find("lock") or obj.Parent.Name:lower():find("lock")) then
+                fireproximityprompt(obj)
+                lastLockTime = tick()
+                Log("🔒 База заблокирована на 60 секунд", Color3.fromRGB(0, 255, 0))
+                return
+            end
+            
+            if obj:IsA("ClickDetector") and obj.Parent.Name:lower():find("lock") then
+                fireclickdetector(obj)
+                lastLockTime = tick()
+                Log("🔒 База заблокирована", Color3.fromRGB(0, 255, 0))
+                return
+            end
         end
-    end
-end
-
--- Anti Kick
-if settings.antiKick then
-    local mt = getrawmetatable(game)
-    local oldNamecall = mt.__namecall
-    
-    setreadonly(mt, false)
-    mt.__namecall = newcclosure(function(self, ...)
-        local method = getnamecallmethod()
-        if method == "Kick" or method == "kick" then
-            return
-        end
-        return oldNamecall(self, ...)
     end)
-    setreadonly(mt, true)
 end
 
--- Основной цикл
+-- ============================================
+-- ГЛАВНЫЙ ЦИКЛ
+-- ============================================
+
+local lastStealTime = 0
+local lastAnalyzeTime = 0
+
 RunService.Heartbeat:Connect(function()
     pcall(function()
-        -- ESP
-        if settings.esp then
-            CreateESP()
-        else
-            RemoveESP()
+        -- Обновление статистики
+        StatsLabel.Text = string.format("📊 Попыток: %d | ✅ Успешно: %d | 🎯 Найдено: %d", 
+            stealAttempts, successfulSteals, #foundBrainrots)
+        
+        -- Auto Analyze
+        if settings.debugMode and tick() - lastAnalyzeTime > 30 then
+            FindAllBrainrots()
+            lastAnalyzeTime = tick()
         end
         
-        -- Auto Farm
-        if settings.autoFarm then
-            AutoFarm()
-        end
-        
-        -- 🔥 BYPASS LOCKED BASE
-        if settings.bypassLock then
-            BypassLockedBase()
+        -- Auto Steal
+        if settings.autoSteal and tick() - lastStealTime > 2 then
+            if #foundBrainrots == 0 then
+                FindAllBrainrots()
+            end
+            
+            if #foundBrainrots > 0 then
+                local brainrot = foundBrainrots[1]
+                if brainrot.model and brainrot.model:IsDescendantOf(workspace) then
+                    StealBrainrot(brainrot)
+                    table.remove(foundBrainrots, 1)
+                end
+            end
+            
+            lastStealTime = tick()
         end
         
         -- Auto Lock
-        if settings.autoLock then
-            AutoLockBase()
+        AutoLockBase()
+        
+        -- ESP
+        if settings.esp then
+            CreatePlayerESP()
+            CreateBrainrotESP()
+        else
+            RemoveAllESP()
         end
         
-        -- Fly Mode
+        -- Fly
         if settings.flyMode and not flying then
             StartFly()
         elseif not settings.flyMode and flying then
@@ -698,25 +924,27 @@ RunService.Heartbeat:Connect(function()
         end
         
         -- No Clip
-        NoClip()
+        if settings.noClip then
+            for _, part in pairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    part.CanCollide = false
+                end
+            end
+        end
     end)
 end)
 
--- Обработка изменения персонажа
-player.CharacterAdded:Connect(function(char)
-    character = char
-    humanoid = char:WaitForChild("Humanoid")
-    hrp = char:WaitForChild("HumanoidRootPart")
-    wait(0.5)
-    if settings.speedBoost then
-        humanoid.WalkSpeed = settings.walkSpeed
-    end
-end)
+-- ============================================
+-- ИНИЦИАЛИЗАЦИЯ
+-- ============================================
 
-print("✅ Brainrot Script v3.0 с Bypass Locked Base загружен!")
-print("🔓 Новые функции:")
-print("  - Обход заблокированных баз (6 методов)")
-print("  - Контроль владельца базы")
-print("  - Мгновенная кража через стены")
-print("  - Quantum Cloner + Invisibility комбо")
-print("  - Body Swap + Trap метод")
+wait(2)
+Log("🚀 BRAINROT ADVANCED SCRIPT v4.0 ЗАГРУЖЕН!", Color3.fromRGB(0, 255, 0))
+Log("📋 Начинаю автоматический анализ...")
+AnalyzeWorkspace()
+wait(1)
+remoteEvents = AnalyzeReplicatedStorage()
+wait(1)
+FindAllBrainrots()
+Log("✅ Инициализация завершена!", Color3.fromRGB(0, 255, 0))
+Log("💡 Включите Auto Steal для начала работы")
