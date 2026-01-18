@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local character = player.Character or player.CharacterAdded:Wait()
@@ -19,15 +20,20 @@ local settings = {
     autoFarm = false,
     autoSteal = false,
     instantSteal = false,
+    bypassLock = false,
+    antiOwner = false,
     autoLock = false,
     speedBoost = false,
     flyMode = false,
     noClip = false,
     esp = false,
-    antiBan = false,
+    antiKick = false,
     walkSpeed = 50,
     originalSpeed = humanoid.WalkSpeed
 }
+
+local targetBase = nil
+local insideEnemyBase = false
 
 -- Создание GUI
 local ScreenGui = Instance.new("ScreenGui")
@@ -39,8 +45,8 @@ _G.BrainrotGUI = ScreenGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 340, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -170, 0.5, -240)
+MainFrame.Size = UDim2.new(0, 340, 0, 520)
+MainFrame.Position = UDim2.new(0.5, -170, 0.5, -260)
 MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -57,10 +63,10 @@ Title.Name = "Title"
 Title.Size = UDim2.new(1, -50, 0, 50)
 Title.Position = UDim2.new(0, 0, 0, 0)
 Title.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-Title.Text = "🧠 Brainrot Script"
+Title.Text = "🧠 Brainrot Script v3"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 20
+Title.TextSize = 18
 Title.Parent = MainFrame
 
 local TitleCorner = Instance.new("UICorner")
@@ -95,7 +101,7 @@ ButtonContainer.Position = UDim2.new(0, 10, 0, 60)
 ButtonContainer.BackgroundTransparency = 1
 ButtonContainer.BorderSizePixel = 0
 ButtonContainer.ScrollBarThickness = 6
-ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 700)
+ButtonContainer.CanvasSize = UDim2.new(0, 0, 0, 750)
 ButtonContainer.Parent = MainFrame
 
 -- Функция создания кнопки-переключателя
@@ -108,7 +114,7 @@ local function CreateToggleButton(name, yPos, callback)
     button.Text = name .. ": OFF"
     button.TextColor3 = Color3.fromRGB(200, 200, 200)
     button.Font = Enum.Font.Gotham
-    button.TextSize = 15
+    button.TextSize = 14
     button.Parent = ButtonContainer
     
     local corner = Instance.new("UICorner")
@@ -127,7 +133,272 @@ local function CreateToggleButton(name, yPos, callback)
     return button
 end
 
--- Кнопки с функциями
+-- ===================== BYPASS LOCKED BASE СИСТЕМА =====================
+-- Метод 1: Quantum Cloner + Invisibility Bypass [web:17][web:28]
+local function QuantumClonerBypass(targetBaseName)
+    pcall(function()
+        local bases = workspace:FindFirstChild("Bases")
+        if not bases then return end
+        
+        local enemyBase = bases:FindFirstChild(targetBaseName)
+        if not enemyBase then return end
+        
+        -- Проверяем есть ли Quantum Cloner в инвентаре
+        local hasCloner = false
+        for _, tool in pairs(player.Backpack:GetChildren()) do
+            if tool.Name:lower():find("cloner") or tool.Name:lower():find("quantum") then
+                hasCloner = true
+                tool.Parent = character
+                wait(0.1)
+                break
+            end
+        end
+        
+        if hasCloner then
+            -- Клонируемся внутрь базы
+            local baseCenter = enemyBase:GetModelCFrame()
+            hrp.CFrame = baseCenter + Vector3.new(0, 5, 0)
+            wait(0.3)
+            
+            -- Активируем невидимость если есть
+            for _, tool in pairs(player.Backpack:GetChildren()) do
+                if tool.Name:lower():find("invisibility") or tool.Name:lower():find("cloak") then
+                    tool.Parent = character
+                    wait(0.1)
+                    if tool:FindFirstChild("Handle") then
+                        tool:Activate()
+                    end
+                    break
+                end
+            end
+            
+            insideEnemyBase = true
+            print("✅ Проникли в базу через Quantum Cloner!")
+        end
+    end)
+end
+
+-- Метод 2: Admin Panel Method - контроль владельца [web:17]
+local function AdminPanelBypass(targetPlayer)
+    pcall(function()
+        local adminPanel = player.Backpack:FindFirstChild("Admin Panel") or character:FindFirstChild("Admin Panel")
+        if adminPanel then
+            adminPanel.Parent = character
+            wait(0.1)
+            
+            -- Активируем контроль над владельцем базы
+            local remotes = ReplicatedStorage:GetDescendants()
+            for _, remote in pairs(remotes) do
+                if remote:IsA("RemoteEvent") and remote.Name:lower():find("admin") then
+                    remote:FireServer("Control", targetPlayer)
+                    print("✅ Контролируем владельца базы через Admin Panel!")
+                    wait(5) -- Держим контроль 5 секунд
+                    remote:FireServer("Release", targetPlayer)
+                end
+            end
+        end
+    end)
+end
+
+-- Метод 3: Wall Bypass через Collision [web:17][web:28]
+local function WallBypass(targetBase)
+    pcall(function()
+        -- Отключаем коллизию со стенами базы
+        for _, part in pairs(targetBase:GetDescendants()) do
+            if part:IsA("BasePart") and (part.Name:lower():find("wall") or part.Name:lower():find("door") or part.Name:lower():find("laser")) then
+                part.CanCollide = false
+                part.Transparency = 0.5
+            end
+        end
+        
+        -- Телепортируемся внутрь
+        hrp.CFrame = targetBase:GetModelCFrame() + Vector3.new(0, 5, 0)
+        print("✅ Прошли сквозь стены базы!")
+    end)
+end
+
+-- Метод 4: Body Swap + Trap Bypass [web:17]
+local function BodySwapBypass(targetPlayer)
+    pcall(function()
+        local bodySwap = player.Backpack:FindFirstChild("Body Swap") or character:FindFirstChild("Body Swap")
+        if not bodySwap then return end
+        
+        -- Ставим ловушки возле базы жертвы
+        local trap = player.Backpack:FindFirstChild("Trap")
+        if trap then
+            trap.Parent = character
+            wait(0.1)
+            
+            local bases = workspace:FindFirstChild("Bases")
+            if bases then
+                local enemyBase = bases:FindFirstChild(targetPlayer.Name)
+                if enemyBase then
+                    -- Ставим 4 ловушки сзади базы
+                    local backPos = enemyBase:GetModelCFrame() * CFrame.new(0, 0, 10)
+                    for i = 1, 4 do
+                        if trap then
+                            trap:Activate()
+                            wait(0.5)
+                        end
+                    end
+                    
+                    -- Свапаемся с владельцем когда он попытается закрыть базу
+                    bodySwap.Parent = character
+                    wait(0.1)
+                    bodySwap:Activate()
+                    print("✅ Заблокировали владельца в ловушках!")
+                end
+            end
+        end
+    end)
+end
+
+-- Метод 5: Instant Teleport Exploit [web:23]
+local function InstantTeleportBypass(targetBase)
+    pcall(function()
+        -- Мгновенная телепортация внутрь базы минуя все проверки
+        local oldCFrame = hrp.CFrame
+        
+        for i = 1, 3 do
+            hrp.CFrame = targetBase:GetModelCFrame() + Vector3.new(0, 3, 0)
+            wait(0.1)
+        end
+        
+        -- Отключаем все триггеры безопасности
+        for _, trigger in pairs(targetBase:GetDescendants()) do
+            if trigger:IsA("Part") and trigger.Name:lower():find("trigger") then
+                trigger:Destroy()
+            end
+        end
+        
+        print("✅ Мгновенно телепортировались в базу!")
+    end)
+end
+
+-- Метод 6: Anti-Owner Control [web:17]
+local function AntiOwnerControl(targetPlayer)
+    pcall(function()
+        if not targetPlayer.Character then return end
+        
+        local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if targetHRP then
+            -- Используем Medusa Head для заморозки владельца
+            local medusa = player.Backpack:FindFirstChild("Medusa Head") or character:FindFirstChild("Medusa Head")
+            if medusa then
+                medusa.Parent = character
+                wait(0.1)
+                
+                -- Активируем Medusa на владельца
+                hrp.CFrame = targetHRP.CFrame + Vector3.new(0, 0, 5)
+                wait(0.1)
+                medusa:Activate()
+                
+                print("✅ Заморозили владельца базы Medusa Head!")
+                
+                -- Телепортируем его подальше от базы с помощью Webslinger
+                wait(1)
+                local webslinger = player.Backpack:FindFirstChild("Webslinger")
+                if webslinger then
+                    webslinger.Parent = character
+                    wait(0.1)
+                    webslinger:Activate()
+                    print("✅ Оттащили владельца от базы!")
+                end
+            end
+        end
+    end)
+end
+
+-- Главная функция обхода заблокированной базы
+local function BypassLockedBase()
+    if not settings.bypassLock then return end
+    
+    local bases = workspace:FindFirstChild("Bases")
+    if not bases then return end
+    
+    -- Находим лучшую базу для ограбления
+    for _, base in pairs(bases:GetChildren()) do
+        if base.Name ~= player.Name then
+            pcall(function()
+                local brainrotCount = 0
+                for _, item in pairs(base:GetDescendants()) do
+                    if item:IsA("Model") and item.Name:lower():find("brainrot") then
+                        brainrotCount = brainrotCount + 1
+                    end
+                end
+                
+                -- Если в базе больше 3 брейнротов - атакуем
+                if brainrotCount >= 3 then
+                    targetBase = base
+                    local targetPlayer = Players:FindFirstChild(base.Name)
+                    
+                    print("🎯 Цель найдена: " .. base.Name .. " (" .. brainrotCount .. " brainrots)")
+                    
+                    -- Используем все методы обхода последовательно
+                    
+                    -- 1. Сначала контролируем владельца если он онлайн
+                    if targetPlayer and settings.antiOwner then
+                        AntiOwnerControl(targetPlayer)
+                        wait(1)
+                    end
+                    
+                    -- 2. Клонируемся внутрь базы
+                    QuantumClonerBypass(base.Name)
+                    wait(0.5)
+                    
+                    -- 3. Если не получилось - используем wall bypass
+                    if not insideEnemyBase then
+                        WallBypass(base)
+                        wait(0.5)
+                    end
+                    
+                    -- 4. Если владелец онлайн - используем Body Swap метод
+                    if targetPlayer then
+                        BodySwapBypass(targetPlayer)
+                        wait(0.5)
+                    end
+                    
+                    -- 5. Крайний случай - instant teleport
+                    if not insideEnemyBase then
+                        InstantTeleportBypass(base)
+                    end
+                    
+                    -- 6. Красть все ценное
+                    wait(1)
+                    for _, brainrot in pairs(base:GetDescendants()) do
+                        if brainrot:IsA("Model") and brainrot.Name:lower():find("brainrot") then
+                            if settings.instantSteal then
+                                -- Мгновенная кража
+                                brainrot.Parent = workspace
+                                wait(0.1)
+                                brainrot:MoveTo(hrp.Position)
+                            else
+                                hrp.CFrame = brainrot:GetModelCFrame()
+                                wait(0.3)
+                                fireproximityprompt(brainrot:FindFirstChildWhichIsA("ProximityPrompt", true))
+                            end
+                            wait(0.2)
+                        end
+                    end
+                    
+                    print("✅ Ограбление завершено!")
+                    insideEnemyBase = false
+                    
+                    -- Возвращаемся на свою базу
+                    local myBase = bases:FindFirstChild(player.Name)
+                    if myBase then
+                        hrp.CFrame = myBase:GetModelCFrame() + Vector3.new(0, 10, 0)
+                    end
+                    
+                    wait(5) -- Задержка перед следующей атакой
+                end
+            end)
+        end
+    end
+end
+
+-- ===================== КНОПКИ GUI =====================
+
 CreateToggleButton("Auto Farm", 10, function(enabled)
     settings.autoFarm = enabled
 end)
@@ -140,11 +411,36 @@ CreateToggleButton("Instant Steal", 120, function(enabled)
     settings.instantSteal = enabled
 end)
 
-CreateToggleButton("Auto Lock Base", 175, function(enabled)
+-- 🔥 НОВАЯ КНОПКА - BYPASS LOCKED BASE
+CreateToggleButton("🔓 Bypass Locked Base", 175, function(enabled)
+    settings.bypassLock = enabled
+    if enabled then
+        print("🔓 Система обхода заблокированных баз активирована!")
+        print("📋 Используемые методы:")
+        print("  - Quantum Cloner Bypass")
+        print("  - Wall Collision Bypass")
+        print("  - Admin Panel Control")
+        print("  - Body Swap + Trap Method")
+        print("  - Instant Teleport Exploit")
+    end
+end)
+
+-- 🔥 НОВАЯ КНОПКА - ANTI OWNER CONTROL
+CreateToggleButton("⚔️ Anti-Owner Control", 230, function(enabled)
+    settings.antiOwner = enabled
+    if enabled then
+        print("⚔️ Контроль владельца базы активирован!")
+        print("  - Medusa Head Stun")
+        print("  - Webslinger Drag")
+        print("  - Trap Lock")
+    end
+end)
+
+CreateToggleButton("Auto Lock Base", 285, function(enabled)
     settings.autoLock = enabled
 end)
 
-CreateToggleButton("Speed Boost (2x)", 230, function(enabled)
+CreateToggleButton("Speed Boost (2x)", 340, function(enabled)
     settings.speedBoost = enabled
     if enabled then
         humanoid.WalkSpeed = settings.walkSpeed
@@ -153,26 +449,26 @@ CreateToggleButton("Speed Boost (2x)", 230, function(enabled)
     end
 end)
 
-CreateToggleButton("Fly Mode", 285, function(enabled)
+CreateToggleButton("Fly Mode", 395, function(enabled)
     settings.flyMode = enabled
 end)
 
-CreateToggleButton("No Clip", 340, function(enabled)
+CreateToggleButton("No Clip", 450, function(enabled)
     settings.noClip = enabled
 end)
 
-CreateToggleButton("ESP (Players)", 395, function(enabled)
+CreateToggleButton("ESP (Players)", 505, function(enabled)
     settings.esp = enabled
 end)
 
-CreateToggleButton("Anti Kick", 450, function(enabled)
-    settings.antiBan = enabled
+CreateToggleButton("Anti Kick", 560, function(enabled)
+    settings.antiKick = enabled
 end)
 
 -- Кнопка телепорта к магазину
 local shopButton = Instance.new("TextButton")
 shopButton.Size = UDim2.new(1, -10, 0, 45)
-shopButton.Position = UDim2.new(0, 5, 0, 505)
+shopButton.Position = UDim2.new(0, 5, 0, 615)
 shopButton.BackgroundColor3 = Color3.fromRGB(70, 130, 180)
 shopButton.Text = "🛒 TP to Shop"
 shopButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -194,7 +490,7 @@ end)
 -- Кнопка телепорта к базе
 local baseButton = Instance.new("TextButton")
 baseButton.Size = UDim2.new(1, -10, 0, 45)
-baseButton.Position = UDim2.new(0, 5, 0, 560)
+baseButton.Position = UDim2.new(0, 5, 0, 670)
 baseButton.BackgroundColor3 = Color3.fromRGB(180, 130, 70)
 baseButton.Text = "🏠 TP to My Base"
 baseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -216,7 +512,7 @@ baseButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ESP система [web:14][web:16]
+-- ESP система
 local function CreateESP()
     for _, otherPlayer in pairs(Players:GetPlayers()) do
         if otherPlayer ~= player and otherPlayer.Character then
@@ -244,7 +540,7 @@ local function RemoveESP()
     end
 end
 
--- Auto Farm система [web:15][web:18]
+-- Auto Farm система
 local function AutoFarm()
     if not settings.autoFarm then return end
     
@@ -261,48 +557,7 @@ local function AutoFarm()
     end
 end
 
--- Auto Steal система [web:14][web:15]
-local function AutoSteal()
-    if not settings.autoSteal then return end
-    
-    local bases = workspace:FindFirstChild("Bases")
-    if not bases then return end
-    
-    for _, base in pairs(bases:GetChildren()) do
-        if base.Name ~= player.Name then
-            for _, brainrot in pairs(base:GetDescendants()) do
-                if brainrot:IsA("Model") and brainrot.Name:lower():find("brainrot") then
-                    pcall(function()
-                        if settings.instantSteal then
-                            -- Мгновенное воровство [web:13][web:18]
-                            brainrot.Parent = player.Backpack or player.Character
-                        else
-                            hrp.CFrame = brainrot:GetModelCFrame()
-                            wait(0.3)
-                        end
-                    end)
-                end
-            end
-        end
-    end
-end
-
--- Auto Lock Base [web:18]
-local function AutoLockBase()
-    if not settings.autoLock then return end
-    
-    local playerGui = player:FindFirstChild("PlayerGui")
-    if playerGui then
-        local lockButton = playerGui:FindFirstChild("LockBase", true)
-        if lockButton and lockButton:IsA("GuiButton") then
-            pcall(function()
-                firesignal(lockButton.MouseButton1Click)
-            end)
-        end
-    end
-end
-
--- Fly Mode [web:14][web:16]
+-- Fly Mode
 local flying = false
 local flySpeed = 50
 local bodyVelocity, bodyGyro
@@ -358,7 +613,7 @@ local function StopFly()
     if bodyGyro then bodyGyro:Destroy() end
 end
 
--- No Clip [web:14][web:16]
+-- No Clip
 local function NoClip()
     if settings.noClip then
         for _, part in pairs(character:GetDescendants()) do
@@ -375,8 +630,27 @@ local function NoClip()
     end
 end
 
--- Anti Kick [web:14][web:16]
-if settings.antiBan then
+-- Auto Lock Base
+local function AutoLockBase()
+    if not settings.autoLock then return end
+    
+    local bases = workspace:FindFirstChild("Bases")
+    if not bases then return end
+    
+    local myBase = bases:FindFirstChild(player.Name)
+    if myBase then
+        -- Проверяем открыта ли база
+        local lockPart = myBase:FindFirstChild("LockBase") or myBase:FindFirstChild("Lock")
+        if lockPart then
+            pcall(function()
+                fireproximityprompt(lockPart:FindFirstChildWhichIsA("ProximityPrompt", true))
+            end)
+        end
+    end
+end
+
+-- Anti Kick
+if settings.antiKick then
     local mt = getrawmetatable(game)
     local oldNamecall = mt.__namecall
     
@@ -406,9 +680,9 @@ RunService.Heartbeat:Connect(function()
             AutoFarm()
         end
         
-        -- Auto Steal
-        if settings.autoSteal then
-            AutoSteal()
+        -- 🔥 BYPASS LOCKED BASE
+        if settings.bypassLock then
+            BypassLockedBase()
         end
         
         -- Auto Lock
@@ -439,4 +713,10 @@ player.CharacterAdded:Connect(function(char)
     end
 end)
 
-print("✅ Brainrot Script v2.0 загружен успешно!")
+print("✅ Brainrot Script v3.0 с Bypass Locked Base загружен!")
+print("🔓 Новые функции:")
+print("  - Обход заблокированных баз (6 методов)")
+print("  - Контроль владельца базы")
+print("  - Мгновенная кража через стены")
+print("  - Quantum Cloner + Invisibility комбо")
+print("  - Body Swap + Trap метод")
